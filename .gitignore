@@ -1,0 +1,14 @@
+# build output
+PangolinScales
+*.exe
+*.obj
+*.pdb
+*.lib
+*.ilk
+
+# per-user settings and scratch
+*.cfg
+.xdp-*
+shots/
+*.dll
+scales.cfg
