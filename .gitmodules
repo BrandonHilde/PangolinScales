@@ -1,0 +1,3 @@
+[submodule "libs/odinui"]
+	path = libs/odinui
+	url = https://gitlab.com/patrick.pixelshuffle/odinui.git

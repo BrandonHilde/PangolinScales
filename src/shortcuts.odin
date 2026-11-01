@@ -6,6 +6,7 @@ shortcuts_update :: proc() {
 	d := doc
 	if d == nil do return
 	if ui.focus_id != 0 || popup.open || dialog.kind != .None || text_editing() do return
+	if tool_groups_key_capture() do return
 	ctrl, shift := ui.ctrl, ui.shift
 
 	if ctrl {
@@ -55,6 +56,13 @@ shortcuts_update :: proc() {
 		}
 		return
 	}
+
+	if IsKeyPressed(.TAB) && !shift && !ui.alt {
+		run_cmd(.Toggle_Canvas_Mode)
+		return
+	}
+	// group hotkeys come before the single-key tool shortcuts, so a group can take over a letter
+	if tool_groups_hotkeys() do return
 
 	if d.kind == .Font {
 		font_shortcuts(d)

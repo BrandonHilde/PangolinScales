@@ -24,6 +24,12 @@ main :: proc() {
 	win_w, win_h := 0, 0
 	shot_frame := 8
 	demo := false
+	menu_arg := -1
+	Script_Click :: struct {
+		frame: int,
+		pos:   Vec2,
+	}
+	clicks := make([dynamic]Script_Click)
 	args := os.args
 	for i := 1; i < len(args); i += 1 {
 		a := args[i]
@@ -50,6 +56,24 @@ main :: proc() {
 			os.exit(render_cli(args[i + 1], args[i + 2], sc > 0 ? sc : 1))
 		case a == "--demo":
 			demo = true
+		case a == "--clicks" && i + 1 < len(args):
+			// "frame:x,y;frame:x,y": left clicks in window pixels, for checking the interface with --shot
+			for part in strings.split(args[i + 1], ";", context.temp_allocator) {
+				fp := strings.split(part, ":", context.temp_allocator)
+				if len(fp) != 2 do continue
+				xy := strings.split(fp[1], ",", context.temp_allocator)
+				if len(xy) != 2 do continue
+				f, _ := strconv.parse_int(fp[0])
+				x, _ := strconv.parse_f32(xy[0])
+				y, _ := strconv.parse_f32(xy[1])
+				append(&clicks, Script_Click{f, {x, y}})
+			}
+			i += 1
+		case a == "--menu" && i + 1 < len(args):
+			menu_arg, _ = strconv.parse_int(args[i + 1])
+			i += 1
+		case a == "--icon-sheet" && i + 1 < len(args):
+			os.exit(icon_sheet(args[i + 1]))
 		case a == "--selftest":
 			os.exit(selftest())
 		}
@@ -61,16 +85,18 @@ main :: proc() {
 	}
 	defer gfx_shutdown()
 	pen_init()
+	tool_groups_default()
 	prefs_load()
-	ui.icons = icons_build_atlas()
 	brand_init()
+	oui_init()
+	panels_init()
 
 	fonts_scan()
 	opened := false
 	for i := 1; i < len(args); i += 1 {
 		a := args[i]
 		if strings.has_prefix(a, "--") {
-			if a == "--shot" || a == "--scale" || a == "--size" || a == "--shot-frame" || a == "--demo-file" do i += 1
+			if a == "--shot" || a == "--scale" || a == "--size" || a == "--shot-frame" || a == "--demo-file" || a == "--clicks" || a == "--menu" do i += 1
 			continue
 		}
 		open_path(a)
@@ -83,6 +109,18 @@ main :: proc() {
 	for !want_quit {
 		free_all(context.temp_allocator)
 		gfx_poll()
+		for c in clicks {
+			switch frame_no {
+			case c.frame - 2 ..< c.frame:
+				gfx.mouse = c.pos
+			case c.frame:
+				gfx.mouse = c.pos
+				gfx.m_pressed[0], gfx.m_down[0] = true, true
+			case c.frame + 1:
+				gfx.mouse = c.pos
+				gfx.m_released[0], gfx.m_down[0] = true, false
+			}
+		}
 		if gfx.quit {
 			gfx.quit = false
 			want_quit = true
@@ -101,9 +139,13 @@ main :: proc() {
 		for p in gfx.dropped do open_path(p)
 		shortcuts_update()
 		if status_t > 0 do status_t -= ui.dt
+		if menu_arg >= 0 && frame_no == 3 do menu_request = menu_arg
 
 		gfx_begin(C_BG)
+		oui_begin_frame()
 		main_ui()
+		oui_end_frame()
+		oui_render()
 		dialogs_run()
 		popup_run()
 		tooltip_draw()

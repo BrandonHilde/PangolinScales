@@ -142,6 +142,21 @@ ui_selftest :: proc(t: ^Test_Run) {
 	check(t, len(d5.root.children) == 1 && text_str(d5.root.children[0]) == "Hi", "typed text")
 	tb := node_doc_bounds(d5, d5.root.children[0])
 	check(t, !bounds_empty(tb) && bounds_w(tb) > 5, "text has outlines")
+
+	// the text tool drags text around; a click without a drag edits it
+	c0 := bounds_center(tb)
+	sim_drag(d5, c0, c0 + {40, 20})
+	moved := node_doc_bounds(d5, d5.root.children[0])
+	check(t, near(moved.x0, tb.x0 + 40, 0.01) && near(moved.y0, tb.y0 + 20, 0.01), "text tool drags text")
+	check(t, !text_editing() && len(d5.root.children) == 1, "dragging text neither edits it nor adds text")
+	sim_click(d5, c0 + {40, 20})
+	check(t, text_editing() && tl.text_uid == d5.root.children[0].uid, "a click on text edits it")
+	sim_drag(d5, c0 + {40, 20}, c0 + {50, 20})
+	check(t, text_editing() && near(node_doc_bounds(d5, d5.root.children[0]).x0, tb.x0 + 50, 0.01), "the text being edited can be dragged")
+	text_finish()
+	history_undo(d5)
+	history_undo(d5)
+	check(t, near(node_doc_bounds(d5, d5.root.children[0]).x0, tb.x0, 0.01), "each text drag is one undo step")
 	cmd_text_outlines(d5)
 	d5.sel = {}
 	append(&d5.sel, d5.root.children[0].uid)
@@ -240,4 +255,117 @@ ui_selftest :: proc(t: ^Test_Run) {
 	font_select_glyph(fd, 2)
 	check(t, len(font_cur(fd).segs) >= 5 && len(fd.root.children) == 1, "glyph edit survives switching")
 	doc = nil
+}
+
+tool_groups_selftest :: proc(t: ^Test_Run) {
+	d := sim_doc()
+	tool_groups_default()
+	set_tool(.Select)
+
+	// a group's hotkey picks its last tool, then cycles through the group
+	tool_group_activate(1)
+	check(t, cur_tool == .Pen && current_group() == 1, "group hotkey picks the group's first tool")
+	tool_group_activate(1)
+	check(t, cur_tool == .Freehand, "pressing the hotkey again cycles")
+	tool_group_activate(1)
+	tool_group_activate(1)
+	check(t, cur_tool == .Pen, "cycling wraps around")
+	tool_group_activate(1)
+	tool_group_activate(0)
+	tool_group_activate(1)
+	check(t, cur_tool == .Freehand, "coming back to a group picks its last tool")
+
+	// a tool in two groups stays with the group it was picked from
+	append(&tool_groups[4].tools, Tool.Select)
+	select_tool_in_group(.Select, 4)
+	check(t, current_group() == 4, "shared tool keeps the group it was picked from")
+	set_tool(.Rect)
+	check(t, current_group() == 2, "a tool picked by its own shortcut finds its group")
+
+	// font glyphs have no text or eyedropper: the Text group is skipped and hidden
+	d.kind = .Font
+	set_tool(.Select)
+	tool_group_activate(3)
+	check(t, cur_tool == .Select, "a group of unavailable tools does nothing")
+	check(t, !group_visible(&tool_groups[3]), "a group of unavailable tools is hidden")
+	d.kind = .Svg
+
+	// preferences round trip
+	name_set(&tool_groups[0].name, "Pick: me; now")
+	tool_groups[0].name = make_name(group_clean_name(name_str(&tool_groups[0].name)))
+	tool_groups[2].key = .KEY_NULL
+	append(&tool_groups, Tool_Group{})
+	s := tool_groups_serialize()
+	tool_groups_parse(s)
+	check(t, len(tool_groups) == 7, "groups round trip: count")
+	check(t, name_str(&tool_groups[0].name) == "Pick me now", "group names drop : and ;")
+	check(t, tool_groups[1].key == .TWO && tool_groups[2].key == .KEY_NULL, "groups round trip: hotkeys")
+	check(t, len(tool_groups[4].tools) == 3 && tool_groups[4].tools[2] == .Select, "groups round trip: tools")
+	check(t, len(tool_groups[6].tools) == 0 && len(tool_groups[6].ops) == 0, "groups round trip: empty group")
+	check(t, len(tool_groups[5].ops) == 6 && tool_groups[5].ops[1] == .Subtract && len(tool_groups[5].tools) == 0, "groups round trip: path operations")
+	tool_groups_parse("65:Pen,Nonsense,Pen:X;7:Rect")
+	check(t, len(tool_groups) == 2 && len(tool_groups[0].tools) == 1 && tool_groups[0].key == .A, "unknown tools and duplicates are dropped")
+	check(t, tool_groups[1].key == .KEY_NULL, "keys that are not letters or digits are dropped")
+
+	check(t, len(tool_groups) == 2 && tool_groups[0].name.n == 1, "groups saved before path operations still load")
+	tool_groups_parse("0::Ops:Union,Pen,Union,Offset_In")
+	check(t, len(tool_groups[0].ops) == 2 && tool_groups[0].ops[1] == .Offset_In, "only known path operations load, once each")
+
+	// a group of operations: its hotkey runs the operation last used from it on the selection
+	tool_groups_default()
+	set_tool(.Select)
+	d2 := sim_doc()
+	a := new_shape(d2, .Rect)
+	a.x, a.y, a.w, a.h = 10, 10, 40, 40
+	b := new_shape(d2, .Rect)
+	b.x, b.y, b.w, b.h = 30, 30, 40, 40
+	append(&d2.root.children, a, b)
+	append(&d2.sel, a.uid, b.uid)
+	pg := 5
+	check(t, len(tool_groups[pg].ops) > 0 && len(tool_groups[pg].tools) == 0, "default Path group holds operations")
+	op, _ := path_op(.Union)
+	check(t, path_op_enabled(op), "union is enabled with two objects selected")
+	tool_groups[pg].last_op = .Subtract
+	tool_group_activate(pg)
+	check(t, len(d2.root.children) == 1 && d2.root.children[0].kind == .Path && cur_tool == .Select, "operation group hotkey runs its last operation, tool unchanged")
+	clear(&d2.sel)
+	check(t, !path_op_enabled(op), "union is disabled with nothing selected")
+	group_run_op(pg, .Break_Apart)
+	check(t, tool_groups[pg].last_op == .Break_Apart, "running an operation makes it the group's last")
+
+	tool_groups_default()
+	set_tool(.Select)
+}
+
+// Object list drag and drop: node_reorder places the dragged object next to the drop target.
+reorder_selftest :: proc(t: ^Test_Run) {
+	d := sim_doc()
+	mk :: proc(d: ^Doc, x: f32) -> ^Node {
+		n := new_shape(d, .Rect)
+		n.x, n.y, n.w, n.h = x, 10, 10, 10
+		return n
+	}
+	a, b, c := mk(d, 0), mk(d, 20), mk(d, 40)
+	append(&d.root.children, a, b, c) // a at the back, c in front
+	check(t, node_reorder(d, a, c, true), "reorder: drop above the front object")
+	check(t, d.root.children[0] == b && d.root.children[1] == c && d.root.children[2] == a, "reorder: dragged object is now in front")
+	undo_n := len(d.undo)
+	check(t, !node_reorder(d, a, c, true) && len(d.undo) == undo_n, "reorder: dropping where it already is changes nothing")
+	node_reorder(d, a, b, false)
+	check(t, d.root.children[0] == a, "reorder: drop below the back object")
+
+	// into a moved group: the object stays where it is on the page
+	g := new_shape(d, .Group)
+	g.xf = mat_translate(100, 50)
+	x := mk(d, 0)
+	append(&g.children, x)
+	append(&d.root.children, g)
+	before := node_doc_bounds(d, b)
+	check(t, node_reorder(d, b, x, true), "reorder: into a group")
+	after := node_doc_bounds(d, b)
+	check(t, node_parent(d.root, b) == g && g.children[1] == b, "reorder: lands in the group, above the target")
+	check(t, near(after.x0, before.x0, 0.01) && near(after.y0, before.y0, 0.01), "reorder: keeps its place on the page")
+	check(t, !node_reorder(d, g, x, true), "reorder: a group cannot go inside itself")
+	history_undo(d)
+	check(t, len(d.root.children) == 4 && len(d.root.children[3].children) == 1, "reorder: undo")
 }

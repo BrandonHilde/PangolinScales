@@ -36,8 +36,8 @@ TOOL_NAMES := [Tool]string {
 }
 
 TOOL_ICONS := [Tool]Icon {
-	.Select   = .Move,
-	.Node     = .Curve,
+	.Select   = .Pointer,
+	.Node     = .Node_Edit,
 	.Pen      = .Pencil,
 	.Freehand = .Brush,
 	.Rect     = .Rect,
@@ -317,7 +317,8 @@ tools_input :: proc(d: ^Doc, vp: Rect, over: bool, sp: Vec2) {
 	pressed := ui.pressed[0] && over
 	if text_editing() {
 		text_update(d, p, pressed)
-		if tl.text_uid != 0 do return
+		// the text tool still takes presses on the edited text, to drag it around
+		if tl.text_uid != 0 && cur_tool != .Text do return
 	}
 	switch cur_tool {
 	case .Select:

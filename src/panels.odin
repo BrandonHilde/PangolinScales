@@ -3,30 +3,44 @@ package pangolin
 import "core:fmt"
 import "core:math"
 
+import oui "odinui:odinui"
+
 // ---------------------------------------------------------------------------
 // Right-hand panels for SVG documents: object list and the properties (fill / stroke, transform, text...).
+// The panel, its headings and buttons are OdinUI nodes; the list and the properties are drawn by hand
+// into slots the theme sizes.
 // ---------------------------------------------------------------------------
 
-panel_section :: proc(r: ^Rect, title: string, h: i32) -> Rect {
-	box := cut_top(r, h)
-	fill_rect(Rect{box.x, box.y, box.w, 18}, C_PANEL_DK)
-	hline(box.x, box.y + 17, box.w, C_BORDER)
-	text(box.x + 8, box.y + (18 - FONT_CAP) / 2, title, C_TEXT_DIM)
-	return Rect{box.x, box.y + 18, box.w, box.h - 18}
+// Section heading: a dim caption with a hairline running to the right edge.
+osection :: proc(key, title: string) {
+	oui.element(uictx, key, "section-head")
+	oui.label(uictx, "t", title)
+	oui.element_leaf(uictx, "line", "section-line")
+	oui.end(uictx)
 }
 
 obj_scroll: int
 prop_scroll: i32
 
-panel_right :: proc(r: Rect) {
-	ui.layer = ui.input_layer < 2 ? 0 : -1
-	fill_rect(r, C_PANEL)
-	vline(r.x, r.y, r.h, C_BORDER)
-	rest := r
-	objs := panel_section(&rest, "Objects", max(rest.h / 3, 120))
-	panel_objects(objs)
-	props := panel_section(&rest, "Properties", rest.h)
-	panel_properties(props)
+panel_right :: proc() {
+	oui.element(uictx, "right", "sidepanel", {id = "right"})
+	defer oui.end(uictx)
+	osection("objects-head", "Objects")
+	oui_slot("objects", "objects")
+	oui.element(uictx, "object-buttons", "row", {id = "object-buttons"})
+	ob :: proc(key: string, ic: Icon, tip: string, c: Cmd) {
+		if clicked, _ := oui_icon_button(key, ic, tip, {class = "panel-btn", enabled = true}); clicked do run_cmd(c)
+	}
+	ob("raise", .Up, "Raise (PgUp)", .Raise)
+	ob("lower", .Down, "Lower (PgDn)", .Lower)
+	ob("dup", .Copy, "Duplicate (Ctrl+D)", .Duplicate)
+	ob("group", .Layer, "Group (Ctrl+G)", .Group)
+	ob("del", .Trash, "Delete (Del)", .Delete)
+	oui.element_leaf(uictx, "spacer", "spacer")
+	otext("count", fmt.tprintf("%d objects", len(doc.root.children)), "dim")
+	oui.end(uictx)
+	osection("props-head", "Properties")
+	oui_slot("properties", "properties")
 }
 
 // Object list ------------------------------------------------------------------------------------------------
@@ -44,23 +58,45 @@ flatten_tree :: proc(n: ^Node, depth: int, out: ^[dynamic]Obj_Row) {
 }
 
 panel_objects :: proc(area: Rect) {
-	r := area
+	ui.layer = 0
 	d := doc
 	rows := make([dynamic]Obj_Row, context.temp_allocator)
 	flatten_tree(d.root, 0, &rows)
-	// buttons row at the bottom
-	bar := cut_bottom(&r, 20)
-	hline(bar.x, bar.y, bar.w, C_BORDER)
-	bx := bar.x + 4
-	if icon_button(Rect{bx, bar.y + 2, 18, 16}, .Up, "Raise (PgUp)") do run_cmd(.Raise)
-	if icon_button(Rect{bx + 20, bar.y + 2, 18, 16}, .Down, "Lower (PgDn)") do run_cmd(.Lower)
-	if icon_button(Rect{bx + 44, bar.y + 2, 18, 16}, .Copy, "Duplicate (Ctrl+D)") do run_cmd(.Duplicate)
-	if icon_button(Rect{bx + 64, bar.y + 2, 18, 16}, .Layer, "Group (Ctrl+G)") do run_cmd(.Group)
-	if icon_button(Rect{bx + 88, bar.y + 2, 18, 16}, .Trash, "Delete") do run_cmd(.Delete)
+	ctl_well(area)
+	r := rect_inset(area, 1)
 
 	ROW :: 16
 	visible := int(r.h) / ROW
 	if ui_hover(r) && ui.wheel != 0 do obj_scroll -= int(ui.wheel)
+	// dragging a row: past the edges the list scrolls, the release drops it between rows
+	gap := -1
+	if obj_drag.uid != 0 {
+		dn := node_find(d.root, obj_drag.uid)
+		if dn == nil || len(rows) == 0 {
+			obj_drag = {}
+		} else if !obj_drag.active && abs(ui.my - obj_drag.y0) > 4 && ui.down[0] {
+			obj_drag.active = true
+		}
+		if obj_drag.active {
+			ui.cursor = .RESIZE_NS
+			if ui.time - obj_drag.scroll_t > 0.06 {
+				if ui.my < r.y + 4 do obj_scroll -= 1
+				if ui.my > r.y + r.h - 4 do obj_scroll += 1
+				obj_drag.scroll_t = ui.time
+			}
+			obj_scroll = clamp(obj_scroll, 0, max(len(rows) - visible, 0))
+			gap = clamp(int(math.round(f32(ui.my - r.y) / ROW)) + obj_scroll, 0, len(rows))
+		}
+		if !ui.down[0] {
+			// a drop beside the list cancels
+			if obj_drag.active && ui.mx >= r.x && ui.mx < r.x + r.w {
+				if gap < len(rows) do node_reorder(d, dn, rows[gap].n, true)
+				else do node_reorder(d, dn, rows[len(rows) - 1].n, false)
+			}
+			obj_drag = {}
+			gap = -1
+		}
+	}
 	obj_scroll = clamp(obj_scroll, 0, max(len(rows) - visible, 0))
 	clip_begin(r)
 	defer clip_end()
@@ -71,7 +107,7 @@ panel_objects :: proc(area: Rect) {
 		rr := Rect{r.x, y, r.w, ROW}
 		selected := sel_has(d, n.uid)
 		hover := ui_hover(rr)
-		if selected do fill_rect(rr, Color{178, 100, 56, 120})
+		if selected do fill_rect(rr, with_alpha(C_ACTIVE, 120))
 		else if hover do fill_rect(rr, C_HOVER)
 		x := r.x + 4
 		if icon_button(Rect{x, y + 1, 14, 14}, .Eye, "Show / hide", n.visible) {
@@ -97,12 +133,61 @@ panel_objects :: proc(area: Rect) {
 		label_s := name_str(&n.name)
 		if n.kind == .Text && len(n.text) > 0 do label_s = text_str(n)
 		text_clipped(Rect{tx + 16, y + (ROW - FONT_CAP) / 2, r.x + r.w - tx - 20, FONT_CAP + 2}, label_s, selected ? WHITE : C_TEXT)
+		if obj_drag.active && n.uid == obj_drag.uid do fill_rect(rr, with_alpha(C_PANEL_DK, 150))
 		if hover && ui.pressed[0] && ui.mx > r.x + 34 {
-			if ui.shift do sel_toggle(d, n)
-			else do sel_set(d, n)
+			if ui.shift {
+				sel_toggle(d, n)
+			} else {
+				sel_set(d, n)
+				obj_drag = {uid = n.uid, y0 = ui.my}
+			}
 		}
 		y += ROW
 	}
+	if gap >= 0 {
+		// where the row would land, indented to the group it would join
+		depth := gap < len(rows) ? rows[gap].depth : rows[len(rows) - 1].depth
+		lx := r.x + 34 + i32(depth) * 10
+		ly := r.y + i32(gap - obj_scroll) * ROW
+		fill_rect(Rect{lx, ly - 1, r.x + r.w - lx - 4, 2}, C_ACCENT)
+	}
+}
+
+// A row being dragged in the object list (pressed, then active once it has moved a few pixels).
+Obj_Drag :: struct {
+	uid:      u32,
+	y0:       i32,
+	active:   bool,
+	scroll_t: f64,
+}
+
+obj_drag: Obj_Drag
+
+// Moves `n` next to `target`, into target's parent: in front of it (above it in the list) or behind it.
+// The object keeps its place on the page when it changes groups. Returns whether anything moved.
+node_reorder :: proc(d: ^Doc, n, target: ^Node, in_front: bool) -> bool {
+	if n == target do return false
+	// a group cannot go inside itself
+	for p := node_parent(d.root, target); p != nil; p = node_parent(d.root, p) {
+		if p == n do return false
+	}
+	op := node_parent(d.root, n)
+	np := node_parent(d.root, target)
+	if op == nil || np == nil do return false
+	oi := node_index(op, n)
+	ti := node_index(np, target)
+	dest := in_front ? ti + 1 : ti
+	if op == np {
+		if dest > oi do dest -= 1
+		if dest == oi do return false
+	}
+	world := mat_mul(node_parent_world(d, n), n.xf)
+	history_push(d)
+	ordered_remove(&op.children, oi)
+	inject_at(&np.children, dest, n)
+	if inv, ok := mat_inv(node_parent_world(d, n)); ok do n.xf = mat_mul(inv, world)
+	doc_changed(d)
+	return true
 }
 
 // Colour editing ---------------------------------------------------------------------------------------------
@@ -184,7 +269,7 @@ apply_paint :: proc(d: ^Doc, p: Paint) {
 
 panel_properties :: proc(r: Rect) {
 	d := doc
-	ui.layer = ui.input_layer < 2 ? 0 : -1
+	ui.layer = 0
 	clip_begin(r)
 	defer clip_end()
 	over := ui_hover(r)
@@ -330,15 +415,17 @@ panel_properties :: proc(r: Rect) {
 			y += 20
 		}
 		if sel.kind == .Text {
-			sz := int(sel.size)
-			text(x, y + 3, "Font size", C_TEXT_DIM)
-			if field_int(Rect{x + 90, y, 50, 14}, &sz, 1, 5000) {
+			if button(Rect{x, y, w, 14}, sel.font.n > 0 ? name_str(&sel.font) : DEFAULT_FONT, "Font (click to choose)") {
+				cur_font = sel.font
+				font_pick_open()
+			}
+			y += 18
+			sz := int(sel.size + 0.5)
+			if slider(Rect{x, y, w, 14}, &sz, 1, 1000, "Size", "Text size", "px", 2) {
 				style_push(d)
 				for n in sel_nodes(d) do if n.kind == .Text do n.size = f32(sz)
 				doc_changed(d)
 			}
-			y += 20
-			font_picker(Rect{x, y, w, 14})
 			y += 20
 			if button(Rect{x, y, w, 16}, "Convert to outlines") do run_cmd(.Text_To_Outlines)
 			y += 22

@@ -1,0 +1,385 @@
+/*
+ * Pangolin Scales default theme (the same tokens as Pangolin Paints, so a theme works in both).
+ *
+ * To customise the interface, create theme.css next to PangolinScales.exe. It is loaded on top of
+ * this file and reloaded while the program runs, so only write what you want to change, e.g.
+ *
+ *     :root { --accent: #6aa8ff; --panel: #202329; }
+ *     #right { width: 300px; }
+ *     #body { flex-direction: row-reverse; }     (tools on the right, objects and properties on the left)
+ */
+
+:root {
+	/* surfaces, darkest to lightest: wells < panels < raised controls */
+	--bg:          #15161a;   /* window and gutters */
+	--panel:       #23252b;   /* docked panels */
+	--panel-dark:  #1a1b20;   /* wells: inputs, lists, bars */
+	--panel-light: #343740;   /* raised controls */
+	--border:      #0d0e11;   /* separators and outer edges */
+	--ring:        rgba(255, 255, 255, 0.07);   /* hairline ring around controls */
+	--ring-hi:     rgba(255, 255, 255, 0.16);
+	--hover:       #444855;
+	--active:      #b26438;   /* selected menu rows, pressed buttons */
+	--accent:      #f6aa68;
+	--accent-tint: rgba(246, 170, 104, 0.2);   /* toggled-on fill */
+	--text:        #e5e7ed;
+	--text-dim:    #8c91a0;
+	--text-off:    #585c6a;
+	--viewport:    #2d2f35;   /* behind the canvas */
+	--danger:      #e66262;
+	--radius:      3px;       /* corner radius of controls */
+	--slider-fill:       rgba(246, 170, 104, 0.26);   /* sliders up to their value */
+	--slider-fill-hover: rgba(246, 170, 104, 0.38);
+
+	font-family: "Jersey 10";
+	font-size: 14px;
+	color: var(--text);
+}
+
+/* ---- window layout ----------------------------------------------------------------------- */
+
+#window {
+	display: flex;
+	flex-direction: column;
+	background: var(--bg);
+}
+
+#menubar    { height: 24px; flex: none; }
+#options    { height: 30px; flex: none; }
+#body       { display: flex; flex-direction: row; flex: 1; min-height: 0; }
+#toolbar    { width: 124px; flex: none; }
+#center     { display: flex; flex-direction: column; flex: 1; min-width: 0; height: 100%; }
+#tabs       { height: 26px; flex: none; }
+#viewport   { flex: 1; min-height: 0; }
+#right      { width: 236px; flex: none; }
+#status     { height: 20px; flex: none; }
+#groups-bar { height: 24px; flex: none; }
+
+/* areas the program draws itself (canvas, panels not built from CSS yet) */
+.slot {
+	display: block;
+	object-fit: fill;
+}
+
+/* ---- status bar --------------------------------------------------------------------------- */
+
+statusbar {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	padding: 0 10px;
+	background: var(--panel-dark);
+	border-top: 0.5px solid var(--border);
+}
+statusbar label        { color: var(--text-dim); white-space: nowrap; }
+statusbar label.strong { color: var(--text); }
+statusbar label.message { color: var(--accent); }
+statusbar separator    { width: 0.5px; height: 11px; background: var(--ring-hi); }
+statusbar spacer       { flex: 1; }
+#status-msg            { width: 268px; overflow: hidden; }
+#cursor-info           { width: 90px; height: 100%; }
+
+/* ---- controls ----------------------------------------------------------------------------- */
+
+/* icons are a font: colour and size them like text */
+.icon    { font-family: icons; font-size: 12px; line-height: 12px; }
+.icon.lg { font-size: 16px; line-height: 16px; }
+
+button.icon-btn {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 20px;
+	height: 17px;
+	border-radius: var(--radius);
+	background: var(--panel-light);
+	border: 0.5px solid var(--ring);
+	color: var(--text);
+}
+button.icon-btn:hover    { background: var(--hover); border-color: var(--ring-hi); }
+button.icon-btn:active   { background: var(--panel-dark); border-color: var(--ring-hi); }
+button.icon-btn:checked  { background: var(--accent-tint); border-color: var(--accent); color: var(--accent); }
+button.icon-btn:disabled { background: var(--panel); color: var(--text-off); }
+
+spacer { display: block; flex: 1; }
+
+/* ---- menu bar ----------------------------------------------------------------------------- */
+
+menubar {
+	display: flex;
+	align-items: center;
+	padding: 0 12px 0 7px;
+	background: var(--panel-dark);
+	border-bottom: 0.5px solid var(--border);
+}
+#logo { width: 16px; height: 16px; margin-right: 7px; }
+button.menu-title {
+	display: flex;
+	align-items: center;
+	height: 18px;
+	padding: 0 9px;
+	border-radius: var(--radius);
+	color: var(--text);
+}
+button.menu-title:hover { background: var(--hover); color: #ffffff; }
+button.menu-title.open  { background: var(--active); color: #ffffff; }
+#grid, #canvas-mode { margin-left: 4px; }
+#doc-name { color: var(--text-dim); margin-left: 8px; white-space: nowrap; }
+
+/* ---- document tabs ------------------------------------------------------------------------ */
+
+tabbar {
+	display: flex;
+	align-items: flex-end;
+	gap: 2px;
+	padding: 0 6px;
+	background: var(--panel-dark);
+	border-bottom: 0.5px solid var(--border);
+	overflow: hidden;
+}
+/* tabs run past the bottom of the bar, which hides their lower rounded corners */
+button.tab {
+	position: relative;
+	display: flex;
+	align-items: center;
+	flex: none;
+	height: 28px;
+	margin-bottom: -6px;
+	padding: 0 6px 6px 10px;
+	gap: 12px;
+	border-radius: 5px;
+	color: var(--text-dim);
+}
+button.tab:hover  { background: var(--panel); }
+button.tab.active { background: var(--viewport); color: var(--text); }
+tab-accent {
+	position: absolute;
+	top: 0;
+	left: 6px;
+	right: 6px;
+	height: 2px;
+	border-radius: 1px;
+	background: var(--accent);
+}
+button.icon-btn.tab-close {
+	width: 12px;
+	height: 12px;
+	background: none;
+	border: none;
+	color: var(--text-dim);
+}
+button.icon-btn.tab-close:hover { background: var(--hover); color: var(--danger); }
+#new-tab { margin-left: auto; margin-bottom: 4px; width: 18px; }
+
+/* ---- buttons, sliders, combos, checkboxes ------------------------------------------------- */
+
+button.btn {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: var(--w, auto);
+	height: 14px;
+	padding: 0 6px;
+	flex: none;
+	border-radius: var(--radius);
+	background: var(--panel-light);
+	border: 0.5px solid var(--ring);
+	color: var(--text);
+	white-space: nowrap;
+}
+button.btn:hover    { background: var(--hover); border-color: var(--ring-hi); }
+button.btn:active   { background: var(--panel-dark); border-color: var(--ring-hi); }
+button.btn:checked  { background: var(--accent-tint); border-color: var(--accent); color: var(--accent); }
+button.btn:disabled { background: var(--panel); color: var(--text-off); }
+
+button-group { display: flex; gap: 2px; flex: none; }
+
+slider-bar {
+	position: relative;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: var(--w, 90px);
+	height: 14px;
+	flex: none;
+	border-radius: var(--radius);
+	background: var(--panel-dark);
+	border: 0.5px solid var(--ring);
+}
+slider-bar:hover, slider-bar:active { border-color: var(--ring-hi); }
+bar-fill {
+	position: absolute;
+	left: 0;
+	top: 0;
+	bottom: 0;
+	border-radius: var(--radius);
+	background: var(--slider-fill);
+}
+slider-bar:hover bar-fill, slider-bar:active bar-fill { background: var(--slider-fill-hover); }
+bar-handle {
+	position: absolute;
+	top: 2px;
+	bottom: 2px;
+	width: 2px;
+	border-radius: 1px;
+	background: var(--accent);
+}
+slider-bar:hover bar-handle, slider-bar:active bar-handle { background: #ffffff; }
+slider-bar label { position: relative; color: var(--text); white-space: nowrap; }
+
+button.combo {
+	display: flex;
+	align-items: center;
+	width: var(--w, 90px);
+	height: 14px;
+	padding: 0 3px 0 5px;
+	flex: none;
+	border-radius: var(--radius);
+	background: var(--panel-light);
+	border: 0.5px solid var(--ring);
+	color: var(--text);
+	overflow: hidden;
+}
+button.combo:hover, button.combo.open { background: var(--hover); border-color: var(--ring-hi); }
+.combo-text  { flex: 1; white-space: nowrap; overflow: hidden; }
+.combo-caret { color: var(--text-dim); }
+
+button.check {
+	display: flex;
+	align-items: center;
+	gap: 5px;
+	flex: none;
+	color: var(--text);
+	white-space: nowrap;
+}
+button.check:hover { color: #ffffff; }
+check-box {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 12px;
+	height: 12px;
+	border-radius: 2px;
+	background: var(--panel-dark);
+	border: 0.5px solid var(--ring);
+	color: var(--accent);
+}
+button.check:hover check-box { border-color: var(--ring-hi); }
+check-box:checked { background: var(--accent-tint); border-color: var(--accent); }
+
+button.swatch-btn {
+	width: var(--w, 24px);
+	height: 14px;
+	flex: none;
+	border-radius: var(--radius);
+	border: 0.5px solid var(--ring-hi);
+}
+button.swatch-btn:hover { border-color: #ffffff; }
+
+.hint { color: var(--text-dim); white-space: pre; margin-left: 4px; }
+
+/* ---- tool options bar --------------------------------------------------------------------- */
+
+optionsbar {
+	display: flex;
+	align-items: center;
+	gap: 5px;
+	padding: 0 8px;
+	background: var(--panel);
+	border-bottom: 0.5px solid var(--border);
+	overflow: hidden;
+}
+optionsbar button.icon-btn { width: 18px; height: 14px; }
+.tool-icon  { color: var(--accent); }
+.tool-name  { color: var(--text); width: 118px; white-space: nowrap; overflow: hidden; }
+optionsbar .dim { color: var(--text-dim); white-space: nowrap; margin-left: 4px; }
+#grid-size  { width: 46px; height: 14px; flex: none; }
+button.btn.font-btn { justify-content: flex-start; overflow: hidden; }
+#node-cmds  { margin-left: 8px; }
+
+/* ---- toolbar: tool groups ----------------------------------------------------------------- */
+
+toolbar {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	padding: 8px 4.5px 0 4px;
+	background: var(--panel);
+	border-right: 0.5px solid var(--border);
+	overflow: hidden;
+}
+tool-group {
+	display: flex;
+	flex-direction: column;
+	flex: none;
+	border-radius: 5px;
+	border: 0.5px solid var(--ring-hi);
+	overflow: hidden;
+}
+group-head {
+	display: flex;
+	align-items: center;
+	height: 28px;
+	padding: 0 6px 0 7px;
+	background: var(--panel-dark);
+	border-bottom: 0.5px solid var(--ring-hi);
+}
+.group-title { flex: 1; color: var(--text); white-space: nowrap; overflow: hidden; }
+button.keycap {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	min-width: 18px;
+	height: 16px;
+	padding: 0 5px;
+	border-radius: var(--radius);
+	background: #3e414c;
+	border: 0.5px solid var(--ring-hi);
+	box-shadow: 0 2px 0 var(--border);
+	color: var(--text);
+}
+button.keycap:hover   { background: #4e5260; }
+button.keycap:checked { background: var(--active); color: #ffffff; }
+button.keycap.none    { color: var(--text-off); }
+group-items {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 2px;
+	padding: 5px 4px 4px 5px;
+}
+group-items.blends { flex-direction: column; }
+button.icon-btn.tool { width: 24px; height: 24px; }
+button.icon-btn.quiet { background: none; border-color: var(--ring-hi); color: var(--text-dim); }
+button.icon-btn.quiet:hover { background: var(--hover); color: var(--text); }
+#new-group { height: 18px; margin: 0 1px; }
+toolbar separator { height: 0.5px; margin: 6px 6px 0 6px; background: var(--ring-hi); flex: none; }
+#paint-chips { height: 46px; margin: 7px 0 0 6px; flex: none; }
+
+/* ---- right panel: objects and properties (SVG), glyphs and font (font editing) ------------ */
+
+/* the lists and property sheets are drawn by the program into #objects, #properties,
+   #glyph-grid and #font-props; the theme decides their size and order */
+sidepanel {
+	display: flex;
+	flex-direction: column;
+	height: 100%;
+	padding: 6px 0 4px 0;
+	background: var(--panel);
+	border-left: 0.5px solid var(--border);
+	overflow: hidden;
+}
+section-head { display: flex; align-items: center; gap: 8px; height: 16px; margin: 0 10px 4px 10px; flex: none; }
+section-head label { color: var(--text-dim); white-space: nowrap; }
+section-line { display: block; flex: 1; height: 0.5px; background: var(--ring); }
+.dim { color: var(--text-dim); white-space: nowrap; }
+sidepanel row { display: flex; align-items: center; flex: none; gap: 2px; margin: 0 10px; }
+button.icon-btn.panel-btn { width: 22px; height: 18px; }
+
+#objects        { flex: 0 0 34%; min-height: 80px; margin: 0 10px 5px 10px; }
+#object-buttons { height: 18px; margin-bottom: 8px; }
+#properties     { flex: 1; min-height: 0; margin: 0 2px; }
+
+#glyph-grid     { flex: 0 0 42%; min-height: 120px; margin: 0 10px 5px 10px; }
+#glyph-buttons  { height: 16px; margin-bottom: 8px; }
+#glyph-buttons button.btn { height: 16px; }
+#font-props     { flex: 1; min-height: 0; margin: 0 2px; }

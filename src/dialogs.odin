@@ -12,6 +12,8 @@ Dialog_Kind :: enum {
 	Message,
 	Shortcuts,
 	About,
+	Group_Rename,
+	Font,
 }
 
 Dialog :: struct {
@@ -54,7 +56,7 @@ dialog_open :: proc(k: Dialog_Kind) {
 		dialog.a, dialog.b = int(doc.w), int(doc.h)
 	case .Add_Glyphs:
 		dialog.a = 0
-	case .None, .Confirm_Close, .Message, .Shortcuts, .About:
+	case .None, .Confirm_Close, .Message, .Shortcuts, .About, .Group_Rename, .Font:
 	}
 }
 
@@ -196,8 +198,9 @@ dialogs_run :: proc() {
 		text_clipped(Rect{c.x, c.y + 2, c.w, 14}, name_str(&dialog.msg_text), C_TEXT)
 		if ok, _ := dialog_buttons(c, "OK", ""); ok do dialog_close()
 	case .Shortcuts:
-		c := dialog_frame("Keyboard Shortcuts", 520, 330)
+		c := dialog_frame("Keyboard Shortcuts", 520, 372)
 		lines := [?][2]string {
+			{"1 - 5 (tool groups)", "pick a group, press again to cycle its tools"},
 			{"V / A / P / F", "select / node edit / pen / freehand"},
 			{"R / E / L / T / I", "rectangle / ellipse / line / text / eyedropper"},
 			{"H, Space (hold), middle drag", "pan"},
@@ -215,6 +218,7 @@ dialogs_run :: proc() {
 			{"Pen: Enter / Esc / Backspace", "finish / finish / remove last point"},
 			{"Node tool: Del, C, S, dbl-click", "delete node / corner / smooth / add node"},
 			{"Arrows (Shift)", "nudge 1 (10) units"},
+			{"Tab", "canvas mode: only the drawing and the tool groups"},
 			{"Ctrl+S / Ctrl+Shift+S / Ctrl+E", "save / save as / export PNG"},
 		}
 		y := c.y
@@ -232,5 +236,9 @@ dialogs_run :: proc() {
 		text(c.x + 80, c.y + 38, APP_TAGLINE, C_TEXT)
 		text(c.x + 80, c.y + 58, "Part of the Pangolin suite. BSD 3-Clause.", C_TEXT_DIM)
 		if ok, _ := dialog_buttons(c, "OK", ""); ok do dialog_close()
+	case .Group_Rename:
+		dlg_group_rename()
+	case .Font:
+		dlg_font()
 	}
 }

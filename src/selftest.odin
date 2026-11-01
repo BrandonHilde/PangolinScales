@@ -214,6 +214,8 @@ selftest :: proc() -> int {
 
 	font_selftest(&t)
 	ui_selftest(&t)
+	tool_groups_selftest(&t)
+	reorder_selftest(&t)
 
 	fmt.printf("%d passed, %d failed\n", t.passed, t.failed)
 	return t.failed == 0 ? 0 : 1
@@ -282,4 +284,38 @@ demo_setup :: proc() {
 	sel_set(d, n)
 	d.modified = false
 	add_doc(d)
+}
+
+// Renders every icon at the sizes the interface uses (and two larger ones), light on the panel colour (--icon-sheet).
+icon_sheet :: proc(path: string) -> int {
+	SIZES :: [?]int{12, 16, 24, 32, 48}
+	CELL :: 180
+	PER_ROW :: 5
+	row_h := 48 + 12
+	rows := (len(Icon) + PER_ROW - 1) / PER_ROW
+	w, h := PER_ROW * CELL + 20, rows * row_h + 20
+	pix := make([]Color, w * h)
+	defer delete(pix)
+	for &p in pix do p = C_PANEL
+	for ic in Icon {
+		i := int(ic)
+		x := 10 + (i % PER_ROW) * CELL
+		y := 10 + (i / PER_ROW) * row_h
+		for s in SIZES {
+			cell := icon_render(ICON_SVG[ic], s, context.temp_allocator)
+			for yy in 0 ..< s {
+				for xx in 0 ..< s {
+					k := f32(cell[yy * s + xx].a) / 255
+					d := &pix[(y + 48 - s + yy) * w + x + xx]
+					for ch in 0 ..< 3 do d[ch] = u8(f32(d[ch]) * (1 - k) + f32(C_TEXT[ch]) * k + 0.5)
+				}
+			}
+			x += s + 6
+		}
+	}
+	if !write_file(path, encode_png(pix, w, h)) {
+		fmt.eprintln("cannot write", path)
+		return 1
+	}
+	return 0
 }

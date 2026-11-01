@@ -61,6 +61,8 @@ Cmd :: enum {
 	Zoom_Out,
 	Toggle_Grid,
 	Toggle_Snap,
+	Toggle_Canvas_Mode,
+	Reset_Tool_Groups,
 	Page_Size,
 	Fit_Page_To_Content,
 	Trace_Load,
@@ -112,6 +114,7 @@ shortcut_text :: proc(c: Cmd) -> string {
 	case .Zoom_Out:       return "-"
 	case .Toggle_Grid:    return "Ctrl+;"
 	case .Toggle_Snap:    return "Ctrl+Shift+;"
+	case .Toggle_Canvas_Mode: return "Tab"
 	}
 	return ""
 }
@@ -232,6 +235,11 @@ run_cmd :: proc(c: Cmd) {
 		show_grid = !show_grid
 	case .Toggle_Snap:
 		snap_grid = !snap_grid
+	case .Toggle_Canvas_Mode:
+		canvas_mode = !canvas_mode
+	case .Reset_Tool_Groups:
+		tool_groups_default()
+		set_status("Tool groups reset")
 	case .Page_Size:
 		dialog_open(.Page_Size)
 	case .Fit_Page_To_Content:

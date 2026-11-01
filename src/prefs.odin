@@ -25,6 +25,7 @@ write_file :: proc(path: string, data: []u8) -> bool {
 prefs_save :: proc() {
 	sb := strings.builder_make(context.temp_allocator)
 	fmt.sbprintf(&sb, "ui_scale=%d\n", ui_scale_pref)
+	fmt.sbprintf(&sb, "groups=%s\n", tool_groups_serialize())
 	write_file(prefs_path(), transmute([]u8)strings.to_string(sb))
 }
 
@@ -37,7 +38,12 @@ prefs_load :: proc() {
 		eq := strings.index_byte(line, '=')
 		if eq < 0 do continue
 		key := strings.trim_space(line[:eq])
-		val, vok := strconv.parse_int(strings.trim_space(line[eq + 1:]))
+		sval := strings.trim_space(line[eq + 1:])
+		if key == "groups" {
+			tool_groups_parse(sval)
+			continue
+		}
+		val, vok := strconv.parse_int(sval)
 		if !vok do continue
 		switch key {
 		case "ui_scale":

@@ -5,9 +5,28 @@
 A sibling of [Pangolin Paints](../PangolinPaints) and Pangolin Pixels in the Pangolin graphical editing suite: same look and feel,
 built for paths instead of pixels. The font side is based on ScalarCanvas.
 
-Build with `./build.sh` on Linux/macOS or `build.bat` on Windows (or `odin build src -out:PangolinScales -o:speed`).
+Build with `./build.sh` on Linux/macOS or `build.bat` on Windows. [OdinUI](https://gitlab.com/patrick.pixelshuffle/odinui) is a
+git submodule in `libs/odinui`: clone with `git clone --recursive`, or let the build scripts fetch it on the first build
+(`git submodule update --init`). To build by hand: `odin build src -out:PangolinScales -o:speed -collection:odinui=libs/odinui`.
 Drag `.svg`, `.ttf` or `.otf` files onto the window to open them.
 `PangolinScales --selftest` runs the headless test suite (on Windows use `PangolinScales-console.exe`, since the GUI build has no console).
+
+## Tool groups
+The left toolbar holds **tool groups**, as in Pangolin Paints. Each group has a hotkey shown as a keycap (1 to 5 by
+default): pressing it picks the tool last used from that group, pressing it again cycles through the group's tools.
+- Click a group's keycap to assign a hotkey (any letter or digit; Esc cancels, Backspace clears), rename or remove the group.
+  A hotkey on a letter takes over that letter's single-key tool shortcut. Right-click the header for rename / remove.
+- The **+** at the end of a group adds any tool or **path operation** (union, subtract, intersect, exclude, combine,
+  break apart, reverse, simplify, offset, object / stroke to path) to it; right-click one to take it out. Operation buttons
+  act on the selection at once and are greyed out until enough objects are selected. The default **Path** group (6) holds
+  the booleans; the hotkey of a group with operations but no tools repeats the operation last used from it.
+- **+ New Group** adds an empty group (up to 12). View > Reset Tool Groups brings back the defaults.
+- Groups are saved in `scales.cfg`. In font documents, the text and eyedropper tools (and a group of only those) are hidden.
+- **Canvas mode** (Tab, or the button at the right of the menu bar) hides the toolbar, tabs and side panels; a bar along the
+  bottom shows each group as `[key] -> current tool`.
+
+The fill / stroke chips below the groups show the selection's paints (or those new shapes get); click one to edit it in
+Properties.
 
 ## SVG editing
 - **Tools**: select (move, scale, rotate), node edit, pen (click, click-drag for curves, click the first point to close), freehand
@@ -17,10 +36,12 @@ Drag `.svg`, `.ttf` or `.otf` files onto the window to open them.
 - **Style**: fill and stroke as none, solid, linear or radial gradient (stops, spread, draggable gradient handles on the canvas),
   stroke width, caps, joins, dashes, opacity, even-odd fill, corner radius, exact X / Y / W / H.
 - **Objects**: group / ungroup, z-order, lock and hide, duplicate, copy / paste (also as SVG text with other apps), flip, rotate 90,
-  align and distribute, an objects panel.
+  align and distribute, an objects panel (drag rows to reorder objects or move them in and out of groups; drop beside the
+  list to cancel).
 - **Path menu**: union, subtract, intersect, exclude, combine, break apart, reverse, simplify, offset in and out, stroke to path,
   object to path, text to outlines. Booleans keep untouched curves exact.
-- **Text** with the bundled fonts and every installed TTF / OTF. Text stays live until converted to outlines.
+- **Text** with the bundled fonts and every installed TTF / OTF (the font button opens a searchable list; size is a slider).
+  With the text tool, click a text object to edit it or drag it to move it. Text stays live until converted to outlines.
 - **Grid**, snap to grid, a tracing image under or over the drawing, unlimited undo (100 steps).
 - **Files**: open and save SVG (paths, shapes, groups, transforms, `use`, gradients, inline CSS, `<style>` classes and ids, arcs,
   text / tspan), export PNG at any scale, with or without a background. Unsupported elements (filters, masks, clip paths, images,
@@ -40,6 +61,8 @@ Drag `.svg`, `.ttf` or `.otf` files onto the window to open them.
 ## Shortcuts (Help > Keyboard Shortcuts in the app)
 | | |
 |-|-|
+| 1 - 5 | tool groups (press again to cycle) |
+| Tab | canvas mode |
 | V / A / P / F | select / node edit / pen / freehand |
 | R / E / L / T / I | rectangle / ellipse / line / text / eyedropper |
 | H, Space (hold), middle drag / wheel | pan / zoom |
@@ -55,15 +78,36 @@ Drag `.svg`, `.ttf` or `.otf` files onto the window to open them.
 | Alt while dragging | draw from the centre, break handle symmetry |
 | [ and ] (font mode) | previous / next glyph |
 
+## Customising the interface
+The interface is laid out and styled with CSS through [OdinUI](https://gitlab.com/patrick.pixelshuffle/odinui), like Pangolin
+Paints and with the same colour variables. The default theme is [assets/ui/theme.css](assets/ui/theme.css). To change it,
+create `theme.css` next to the executable: it is applied on top of the default theme and reloaded while the program runs,
+so it only needs what you change.
+
+```css
+:root   { --accent: #6aa8ff; --accent-tint: rgba(106, 168, 255, 0.22); --panel: #1f2430; }
+#body   { flex-direction: row-reverse; }   /* tools on the right, objects and properties on the left */
+#right  { width: 300px; }
+#objects { flex-basis: 50%; }               /* a taller object list */
+```
+
+The colour variables in `:root` also drive the parts the program draws itself (object list, properties, glyph grid,
+dialogs, menus). Icons are SVG files in `assets/icons`, drawn by the document renderer at the screen's resolution, and
+behave like a font in CSS (`font-family: icons`), so `color` and `font-size` style them like text.
+
 ## Developer flags
 `--selftest` (tests), `--demo` (sample drawing), `--shot file.png` (screenshot after a few frames), `--size WxH`, `--scale N`,
-`--render in.svg out.png [scale]` (headless SVG to PNG).
+`--render in.svg out.png [scale]` (headless SVG to PNG), `--icon-sheet out.png` (every icon at several sizes),
+`--clicks "frame:x,y;..."` (left clicks at window pixels on those frames, for checking the interface with `--shot`),
+`--menu N` (opens menu N).
 
 ## Source layout
 `geom`, `path`, `fit`, `boolean`, `pathops` (geometry and path operations) - `raster`, `stroke`, `render` (anti-aliased scanline
 renderer) - `doc`, `style`, `commands` (document model) - `tools`, `nodeedit`, `texttool`, `shortcuts` (interaction) -
 `svg_read`, `svg_write`, `xml` (SVG files) - `text` (fonts for text objects) - `ttf`, `font_doc`, `font_ui` (font editing) -
-`gfx`, `ui`, `icons`, `brand`, `pen*`, `prefs`, `fileio` (platform and widgets, shared in spirit with Pangolin Paints).
+`app`, `panels`, `toolgroups` (window layout, panels, tool groups) - `oui`, `oui_kit` (OdinUI host: SDL renderer backend,
+input bridge, controls) - `gfx`, `ui`, `icons`, `brand`, `pen*`, `prefs`, `fileio` (platform and widgets, shared with
+Pangolin Paints).
 
 ## Known limits
 - Fonts: simple glyphs only on export (composites are flattened on import), no hinting, no kerning editor (the `kern` table is only written if

@@ -4,6 +4,8 @@ import "core:fmt"
 import "core:strconv"
 import "core:strings"
 
+import oui "odinui:odinui"
+
 // ---------------------------------------------------------------------------
 // Font mode user interface: the glyph editing viewport with metric guides, and the glyph / metrics panel.
 // ---------------------------------------------------------------------------
@@ -102,32 +104,34 @@ glyph_matches :: proc(g: ^Font_Glyph, filter: string) -> bool {
 font_prop_scroll: i32
 uni_buf: Name
 
-panel_right_font :: proc(r: Rect) {
+panel_right_font :: proc() {
 	d := doc
 	f := d.font
-	ui.layer = ui.input_layer < 2 ? 0 : -1
-	fill_rect(r, C_PANEL)
-	vline(r.x, r.y, r.h, C_BORDER)
-	rest := r
-	grid_area := panel_section(&rest, "Glyphs", max(rest.h * 45 / 100, 160))
-	panel_glyph_grid(d, grid_area)
-	props := panel_section(&rest, "Glyph and font", rest.h)
-	panel_font_props(d, props)
+	oui.element(uictx, "right", "sidepanel", {id = "right"})
+	defer oui.end(uictx)
+	osection("glyphs-head", "Glyphs")
+	oui_slot("glyph-grid", "glyph_grid")
+	oui.element(uictx, "glyph-buttons", "row", {id = "glyph-buttons"})
+	if obutton("Add...", 56, "Add a set of glyphs") do run_cmd(.Font_Add_Glyphs)
+	if obutton("Delete", 56, "Delete the current glyph") do font_delete_glyph(d)
+	oui.element_leaf(uictx, "spacer", "spacer")
+	otext("count", fmt.tprintf("%d glyphs", len(f.glyphs)), "dim")
+	oui.end(uictx)
+	osection("font-head", "Glyph and font")
+	oui_slot("font-props", "font_props")
 }
 
 panel_glyph_grid :: proc(d: ^Doc, area: Rect) {
+	ui.layer = 0
 	f := d.font
 	r := area
 	bar := cut_top(&r, 20)
-	text_field(Rect{bar.x + 6, bar.y + 3, bar.w - 12, 14}, &f.filter, "Filter by name, character or hex code")
-	if f.filter.n == 0 && ui.focus_id != make_id(Rect{bar.x + 6, bar.y + 3, bar.w - 12, 14}, "text") {
-		text(bar.x + 12, bar.y + 6, "filter...", C_TEXT_OFF)
+	fr := Rect{bar.x, bar.y + 2, bar.w, 14}
+	text_field(fr, &f.filter, "Filter by name, character or hex code")
+	if f.filter.n == 0 && ui.focus_id != make_id(fr, "text") {
+		text(fr.x + 6, fr.y + 3, "filter...", C_TEXT_OFF)
 	}
-	btm := cut_bottom(&r, 20)
-	hline(btm.x, btm.y, btm.w, C_BORDER)
-	if button(Rect{btm.x + 6, btm.y + 3, 70, 15}, "Add...", "Add a set of glyphs") do run_cmd(.Font_Add_Glyphs)
-	if button(Rect{btm.x + 80, btm.y + 3, 70, 15}, "Delete", "Delete the current glyph") do font_delete_glyph(d)
-	text(btm.x + btm.w - 62, btm.y + 6, fmt.tprintf("%d glyphs", len(f.glyphs)), C_TEXT_DIM)
+	ctl_well(r)
 
 	CELL :: 40
 	GAP :: 2
@@ -174,6 +178,7 @@ font_row_int :: proc(x, w: i32, y: i32, name: string, v: ^int, lo, hi: int) -> b
 }
 
 panel_font_props :: proc(d: ^Doc, r: Rect) {
+	ui.layer = 0
 	f := d.font
 	g := font_cur(d)
 	clip_begin(r)
