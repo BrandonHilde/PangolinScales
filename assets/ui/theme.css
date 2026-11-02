@@ -52,6 +52,7 @@
 #tabs       { height: 26px; flex: none; }
 #viewport   { flex: 1; min-height: 0; }
 #right      { width: 236px; flex: none; }
+#font       { width: 236px; flex: none; }   /* font documents only */
 #status     { height: 20px; flex: none; }
 #groups-bar { height: 24px; flex: none; }
 
@@ -355,7 +356,7 @@ button.icon-btn.quiet:hover { background: var(--hover); color: var(--text); }
 toolbar separator { height: 0.5px; margin: 6px 6px 0 6px; background: var(--ring-hi); flex: none; }
 #paint-chips { height: 46px; margin: 7px 0 0 6px; flex: none; }
 
-/* ---- right panel: objects and properties (SVG), glyphs and font (font editing) ------------ */
+/* ---- side panels: objects and properties (#right), glyphs and font (#font, font documents) - */
 
 /* the lists and property sheets are drawn by the program into #objects, #properties,
    #glyph-grid and #font-props; the theme decides their size and order */

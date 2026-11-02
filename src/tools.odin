@@ -538,10 +538,8 @@ tool_shape :: proc(d: ^Doc, p, sp: Vec2, pressed, over: bool) {
 		var_n = new_shape(d, kind)
 		if cur_tool == .Line {
 			name_set(&var_n.name, "Line")
-			if d.kind != .Font {
-				var_n.fill = paint_none()
-				if var_n.stroke.kind == .None do var_n.stroke = paint_solid({40, 30, 24, 255})
-			}
+			var_n.fill = paint_none()
+			if var_n.stroke.kind == .None do var_n.stroke = paint_solid({40, 30, 24, 255})
 		}
 		append(&d.root.children, var_n)
 		tl.create_uid = var_n.uid

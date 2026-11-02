@@ -68,6 +68,7 @@ Font_Glyph :: struct {
 	advance:  f32,
 	segs:     Path, // font units, y up
 	ver:      int, // bumped on every change (thumbnail cache)
+	edit:     Glyph_Edit, // shapes the outline was drawn with, kept while another glyph is edited
 }
 
 Kern_Pair :: struct {
@@ -104,6 +105,7 @@ Font_Doc :: struct {
 glyph_free :: proc(g: ^Font_Glyph) {
 	delete(g.unicodes)
 	delete(g.segs)
+	glyph_edit_free(&g.edit)
 }
 
 // Quadratic approximation of cubics ------------------------------------------------------------------------

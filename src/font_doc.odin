@@ -6,12 +6,29 @@ import "core:os"
 import "core:strings"
 
 // ---------------------------------------------------------------------------
-// Font documents. Font_Glyph outlines live in font units (y up) inside Font_Doc; the glyph being edited is loaded into
-// the document tree of the editing Doc (y flipped: y' = em_top - y), so every drawing and path tool works on it.
-// Edits are committed back to the glyph whenever the editing document changes.
+// Font documents. Font_Glyph outlines live in font units (y up) inside Font_Doc; the glyph being edited is the
+// document tree of the editing Doc (y flipped: y' = em_top - y), so it has layers and every drawing and path tool
+// works on it. The outline is everything visible as painted (fills and strokes) and is committed back to the glyph
+// whenever the editing document changes. Leaving a glyph keeps its tree and history in the glyph for next time.
 // ---------------------------------------------------------------------------
 
 GLYPH_FILL :: Color{36, 38, 48, 255}
+
+Glyph_Edit :: struct {
+	root:       ^Node, // nil: never edited, the outline is shown as one path
+	undo, redo: [dynamic]Doc_State,
+	ver:        int, // the glyph's ver when stored; an outline changed since then is reloaded as one path
+	top:        f32, // em_top the tree was drawn with
+}
+
+glyph_edit_free :: proc(e: ^Glyph_Edit) {
+	node_free(e.root)
+	for &s in e.undo do state_free(&s)
+	for &s in e.redo do state_free(&s)
+	delete(e.undo)
+	delete(e.redo)
+	e^ = {}
+}
 
 fmt_u :: proc(cp: rune, format: string) -> string {
 	return fmt.tprintf(format, int(cp))
@@ -91,39 +108,85 @@ font_edit_doc :: proc(f: ^Font_Doc, title: string) -> ^Doc {
 
 // Loading and committing the current glyph -----------------------------------------------------------------
 
+// Makes glyph `idx` the one being edited: its stored shapes and history when they still match its outline,
+// otherwise the outline as one path. Whatever the document held is discarded (see font_leave_glyph).
 font_load_glyph :: proc(d: ^Doc, idx: int) {
 	f := d.font
 	was_modified := d.modified
-	tools_cancel()
-	for c in d.root.children do node_free(c)
-	clear(&d.root.children)
+	if d.root != nil do tools_cancel()
+	node_free(d.root)
 	for &s in d.undo do state_free(&s)
 	for &s in d.redo do state_free(&s)
-	clear(&d.undo)
-	clear(&d.redo)
+	delete(d.undo)
+	delete(d.redo)
+	d.undo, d.redo = {}, {}
 	clear(&d.sel)
 	f.cur = clamp(idx, 0, max(len(f.glyphs) - 1, 0))
 	f.em_top = f32(f.asc)
 	g := font_cur(d)
+	if g != nil && g.edit.root != nil && g.edit.ver == g.ver {
+		d.root, d.undo, d.redo = g.edit.root, g.edit.undo, g.edit.redo
+		// the ascender may have moved since: keep the shapes where they are in font units
+		if dy := f.em_top - g.edit.top; dy != 0 {
+			tree_shift(d.root, 0, dy)
+			for s in d.undo do tree_shift(s.root, 0, dy)
+			for s in d.redo do tree_shift(s.root, 0, dy)
+		}
+		g.edit = {}
+	} else {
+		if g != nil do glyph_edit_free(&g.edit)
+		d.root = node_new(d, .Group)
+		name_set(&d.root.name, "root")
+		if g != nil do font_set_outline(d, g.segs[:])
+	}
+	if g != nil do d.w = max(g.advance, 1)
+	d.h = f32(f.asc - f.desc)
+	doc_changed(d)
+	d.modified = was_modified
+	f.synced = d.version
+}
+
+// Moves the shapes and history of the glyph being edited into the glyph, leaving the document empty for
+// font_load_glyph.
+font_leave_glyph :: proc(d: ^Doc) {
+	f := d.font
+	g := font_cur(d)
 	if g == nil do return
+	tools_cancel()
+	if f.synced != d.version do font_commit(d)
+	glyph_edit_free(&g.edit)
+	g.edit = Glyph_Edit{d.root, d.undo, d.redo, g.ver, f.em_top}
+	d.root = nil
+	d.undo, d.redo = {}, {}
+}
+
+// Replaces the shapes by one path holding `segs` (font units); an empty outline leaves no shapes.
+font_set_outline :: proc(d: ^Doc, segs: []Seg) {
+	f := d.font
+	for c in d.root.children do node_free(c)
+	clear(&d.root.children)
+	clear(&d.sel)
+	if len(segs) == 0 do return
+	g := font_cur(d)
 	n := node_new(d, .Path)
-	name_set(&n.name, name_str(&g.name))
+	name_set(&n.name, g != nil ? name_str(&g.name) : "Outline")
 	n.fill = paint_solid(GLYPH_FILL)
 	n.stroke = paint_none()
-	n.segs = path_clone(g.segs[:])
+	n.segs = path_clone(segs)
 	for &s in n.segs {
 		s.p.y = f.em_top - s.p.y
 		s.c1.y = f.em_top - s.c1.y
 		s.c2.y = f.em_top - s.c2.y
 	}
 	append(&d.root.children, n)
-	d.w, d.h = max(g.advance, 1), f32(f.asc - f.desc)
-	doc_changed(d)
-	d.modified = was_modified
-	f.synced = d.version
 }
 
-// Writes the editing document's shapes back into the glyph (font units, y up).
+// Moves every shape of a tree, in document units.
+tree_shift :: proc(root: ^Node, dx, dy: f32) {
+	for c in root.children do node_translate(c, dx, dy)
+}
+
+// Writes the editing document's shapes back into the glyph (font units, y up): every visible fill and stroke.
 font_commit :: proc(d: ^Doc) {
 	f := d.font
 	g := font_cur(d)
@@ -135,29 +198,27 @@ font_commit :: proc(d: ^Doc) {
 			for c in n.children do collect(d, c, acc)
 			return
 		}
-		w := node_parent_world(d, n)
-		_ = w
-		all := make(Path, context.temp_allocator)
-		node_world_segs(d, n, &all)
-		if n.fill.kind == .None && n.stroke.kind != .None && n.sw > 0 {
-			// an outline drawn with a stroke becomes its outline shape
-			pieces: Polys
-			defer polys_free(&pieces)
-			stroke_polys_world(d, n, &pieces)
-			band := make(Path, context.temp_allocator)
-			for sb in pieces.subs {
-				for i in sb.a ..< sb.b {
-					if i == sb.a do path_move(&band, pieces.pts[i])
-					else do path_line(&band, pieces.pts[i])
-				}
-				path_close(&band)
-			}
-			merged := path_remove_overlap(band[:])
-			append(acc, ..merged[:])
-			delete(merged)
-		} else {
-			append(acc, ..all[:])
+		shape := make(Path, context.temp_allocator)
+		if n.fill.kind != .None do node_world_segs(d, n, &shape)
+		if n.stroke.kind == .None || n.sw <= 0 {
+			append(acc, ..shape[:])
+			return
 		}
+		// a stroke becomes its outline shape, merged with the fill under it
+		pieces: Polys
+		defer polys_free(&pieces)
+		stroke_polys_world(d, n, &pieces)
+		band := make(Path, context.temp_allocator)
+		for sb in pieces.subs {
+			for i in sb.a ..< sb.b {
+				if i == sb.a do path_move(&band, pieces.pts[i])
+				else do path_line(&band, pieces.pts[i])
+			}
+			path_close(&band)
+		}
+		merged, _ := path_boolean(shape[:], band[:], .Union)
+		append(acc, ..merged[:])
+		delete(merged)
 	}
 	for c in d.root.children do collect(d, c, &acc)
 	delete(g.segs)
@@ -191,20 +252,26 @@ font_sync :: proc(d: ^Doc) {
 
 font_select_glyph :: proc(d: ^Doc, idx: int) {
 	if idx == d.font.cur || idx < 0 || idx >= len(d.font.glyphs) do return
-	font_sync(d)
+	font_leave_glyph(d)
 	font_load_glyph(d, idx)
 	render_invalidate()
 }
 
-// Metrics changed: the editing space moves with the ascender, so commit and reload.
+// Metrics changed: the editing space moves with the ascender, so the shapes (and their history) move with it
+// and keep their place in font units.
 font_metrics_changed :: proc(d: ^Doc) {
 	f := d.font
 	f.metrics_ver += 1
 	f.ver += 1
-	// shapes were committed with the old em_top; reload using the new one
-	idx := f.cur
-	font_commit(d)
-	font_load_glyph(d, idx)
+	font_sync(d)
+	if dy := f32(f.asc) - f.em_top; dy != 0 {
+		f.em_top = f32(f.asc)
+		tree_shift(d.root, 0, dy)
+		for s in d.undo do tree_shift(s.root, 0, dy)
+		for s in d.redo do tree_shift(s.root, 0, dy)
+		doc_changed(d)
+		f.synced = d.version // the outline in font units is unchanged
+	}
 	d.modified = true
 	render_invalidate()
 }
@@ -245,11 +312,9 @@ font_add_set :: proc(d: ^Doc, set: int) {
 font_delete_glyph :: proc(d: ^Doc) {
 	f := d.font
 	if len(f.glyphs) <= 1 do return
-	font_sync(d)
 	idx := f.cur
 	glyph_free(&f.glyphs[idx])
 	ordered_remove(&f.glyphs, idx)
-	delete_key(&f.thumbs, idx)
 	clear(&f.thumbs)
 	for &k in f.kerning {
 		if k.left > idx do k.left -= 1
@@ -300,30 +365,78 @@ path_fix_direction :: proc(p: ^Path) {
 	append(p, ..out[:])
 }
 
+// Every glyph whose contours turn changes outline (other glyphs keep their shapes); the glyph being edited
+// becomes one path, which undo takes back.
 font_fix_direction :: proc(d: ^Doc) {
 	f := d.font
 	font_sync(d)
-	for &g in f.glyphs {
+	fixed := 0
+	for &g, i in f.glyphs {
+		before := make([]Seg, len(g.segs), context.temp_allocator)
+		copy(before, g.segs[:])
 		path_fix_direction(&g.segs)
+		if path_same(before[:], g.segs[:]) do continue
+		fixed += 1
+		if i == f.cur {
+			history_push(d)
+			font_set_outline(d, g.segs[:])
+			doc_changed(d)
+		}
 		g.ver += 1
 	}
+	if fixed == 0 {
+		set_status("Contour directions are already right")
+		return
+	}
 	f.ver += 1
-	font_load_glyph(d, f.cur)
+	f.synced = d.version
 	d.modified = true
-	set_status("Contour directions fixed")
+	set_statusf("Contour directions fixed in %d glyph(s)", fixed)
 }
 
+path_same :: proc(a, b: []Seg) -> bool {
+	if len(a) != len(b) do return false
+	for s, i in a do if s != b[i] do return false
+	return true
+}
+
+// Merges the glyph's shapes into one outline without overlaps (undoable).
 font_remove_overlap_current :: proc(d: ^Doc) {
 	font_sync(d)
 	g := font_cur(d)
-	if g == nil do return
+	if g == nil || len(g.segs) == 0 do return
 	r := path_remove_overlap(g.segs[:])
-	delete(g.segs)
-	g.segs = r
+	defer delete(r)
+	history_push(d)
+	font_set_outline(d, r[:])
+	doc_changed(d)
+}
+
+// Moves the shapes so the outline sits in the middle of the advance width (undoable).
+font_center_glyph :: proc(d: ^Doc) {
+	font_sync(d)
+	g := font_cur(d)
+	if g == nil do return
+	b := path_bounds(g.segs[:])
+	if bounds_empty(b) do return
+	dx := (g.advance - (b.x1 - b.x0)) / 2 - b.x0
+	history_push(d)
+	tree_shift(d.root, dx, 0)
+	doc_changed(d)
+}
+
+// Sets the advance width to the outline's width plus its left side bearing on both sides.
+font_fit_advance :: proc(d: ^Doc) {
+	font_sync(d)
+	g := font_cur(d)
+	if g == nil do return
+	b := path_bounds(g.segs[:])
+	if bounds_empty(b) do return
+	g.advance = b.x1 + max(b.x0, 0)
 	g.ver += 1
 	d.font.ver += 1
-	font_load_glyph(d, d.font.cur)
 	d.modified = true
+	render_invalidate()
 }
 
 font_export :: proc(d: ^Doc) {
@@ -346,45 +459,10 @@ font_export :: proc(d: ^Doc) {
 	}
 }
 
-font_undo :: proc(d: ^Doc) -> bool {
-	return false
-}
-
-font_redo :: proc(d: ^Doc) -> bool {
-	return false
-}
-
+// Font keys on top of the usual ones: [ and ] step through the glyphs.
 font_shortcuts :: proc(d: ^Doc) {
-	if key_hit(.LEFT_BRACKET) do font_select_glyph(d, d.font.cur - 1)
-	if key_hit(.RIGHT_BRACKET) do font_select_glyph(d, d.font.cur + 1)
-	// the drawing tools work as in SVG documents
-	switch {
-	case key_hit(.V): set_tool(.Select)
-	case key_hit(.A): set_tool(.Node)
-	case key_hit(.P): set_tool(.Pen)
-	case key_hit(.F): set_tool(.Freehand)
-	case key_hit(.R): set_tool(.Rect)
-	case key_hit(.E): set_tool(.Ellipse)
-	case key_hit(.L): set_tool(.Line)
-	case key_hit(.H): set_tool(.Hand)
-	case key_hit(.Z): set_tool(.Zoom)
-	case key_hit(.EQUAL), key_hit(.KP_ADD): run_cmd(.Zoom_In)
-	case key_hit(.MINUS), key_hit(.KP_SUBTRACT): run_cmd(.Zoom_Out)
-	}
-	if cur_tool == .Pen {
-		if key_hit(.ENTER) || key_hit(.ESCAPE) do pen_finish(true)
-		if key_hit(.BACKSPACE) do pen_undo_point(d)
-		return
-	}
-	if cur_tool == .Node {
-		if key_hit(.DELETE) || key_hit(.BACKSPACE) do node_cmd_delete(d)
-		if key_hit(.S) do node_cmd_smooth(d)
-		if key_hit(.C) do node_cmd_corner(d)
-		nudge_anchors(d)
-		return
-	}
-	if key_hit(.DELETE) || key_hit(.BACKSPACE) do run_cmd(.Delete)
-	if key_hit(.ESCAPE) do clear(&d.sel)
+	if key_hit(.LEFT_BRACKET) do run_cmd(.Font_Prev_Glyph)
+	if key_hit(.RIGHT_BRACKET) do run_cmd(.Font_Next_Glyph)
 }
 
 // Tests ----------------------------------------------------------------------------------------------------------

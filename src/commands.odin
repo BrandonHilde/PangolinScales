@@ -73,6 +73,8 @@ Cmd :: enum {
 	Font_Export,
 	Font_Fix_Direction,
 	Font_Remove_Overlap,
+	Font_Prev_Glyph,
+	Font_Next_Glyph,
 	Shortcuts,
 	About,
 }
@@ -115,6 +117,8 @@ shortcut_text :: proc(c: Cmd) -> string {
 	case .Toggle_Grid:    return "Ctrl+;"
 	case .Toggle_Snap:    return "Ctrl+Shift+;"
 	case .Toggle_Canvas_Mode: return "Tab"
+	case .Font_Prev_Glyph: return "["
+	case .Font_Next_Glyph: return "]"
 	}
 	return ""
 }
@@ -147,11 +151,9 @@ run_cmd :: proc(c: Cmd) {
 		want_quit = true
 	case .Undo:
 		tools_cancel()
-		if d.kind == .Font && font_undo(d) do break
 		history_undo(d)
 	case .Redo:
 		tools_cancel()
-		if d.kind == .Font && font_redo(d) do break
 		history_redo(d)
 	case .Cut:
 		cmd_copy(d)
@@ -260,6 +262,10 @@ run_cmd :: proc(c: Cmd) {
 		font_fix_direction(d)
 	case .Font_Remove_Overlap:
 		font_remove_overlap_current(d)
+	case .Font_Prev_Glyph:
+		font_select_glyph(d, d.font.cur - 1)
+	case .Font_Next_Glyph:
+		font_select_glyph(d, d.font.cur + 1)
 	case .Shortcuts:
 		dialog_open(.Shortcuts)
 	case .About:

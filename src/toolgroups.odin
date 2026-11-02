@@ -74,24 +74,9 @@ tool_groups: [dynamic]Tool_Group
 active_group := -1 // group the current tool was last picked from, or -1
 group_key_wait := -1 // group waiting for a hotkey press, or -1
 
-// Tools the current document can use (font glyphs have no text objects or colours to pick).
-tool_available :: proc(t: Tool) -> bool {
-	if doc != nil && doc.kind == .Font do return t != .Text && t != .Picker
-	return true
-}
-
 tool_group_has :: proc(g: ^Tool_Group, t: Tool) -> bool {
 	for x in g.tools {
 		if x == t do return true
-	}
-	return false
-}
-
-// Whether the group shows in the toolbar: it is empty (so tools can be added), holds operations or a usable tool.
-group_visible :: proc(g: ^Tool_Group) -> bool {
-	if len(g.tools) == 0 || len(g.ops) > 0 do return true
-	for t in g.tools {
-		if tool_available(t) do return true
 	}
 	return false
 }
@@ -165,8 +150,7 @@ tool_groups_default :: proc() {
 // The group's hotkey: the first time it picks the group's last tool, then it steps through the group.
 tool_group_activate :: proc(gi: int) {
 	g := &tool_groups[gi]
-	tools := make([dynamic]Tool, context.temp_allocator)
-	for t in g.tools do if tool_available(t) do append(&tools, t)
+	tools := g.tools[:]
 	n := len(tools)
 	if n == 0 {
 		if len(g.ops) > 0 do group_run_op(gi, group_has_op(g, g.last_op) ? g.last_op : g.ops[0])
@@ -320,7 +304,7 @@ panel_groups_bar :: proc(r: Rect) {
 	ARROW :: "->"
 	cg := current_group()
 	for &g, gi in tool_groups {
-		if !group_visible(&g) || (len(g.tools) == 0 && len(g.ops) == 0) do continue
+		if len(g.tools) == 0 && len(g.ops) == 0 do continue
 		active := cg == gi
 		shown_icon: Icon
 		if len(g.tools) > 0 {

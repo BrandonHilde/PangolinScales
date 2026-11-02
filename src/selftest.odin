@@ -216,6 +216,7 @@ selftest :: proc() -> int {
 	ui_selftest(&t)
 	tool_groups_selftest(&t)
 	reorder_selftest(&t)
+	font_edit_selftest(&t)
 
 	fmt.printf("%d passed, %d failed\n", t.passed, t.failed)
 	return t.failed == 0 ? 0 : 1

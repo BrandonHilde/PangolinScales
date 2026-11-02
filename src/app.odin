@@ -59,8 +59,8 @@ main_ui :: proc() {
 	panel_tabs()
 	oui_slot("viewport", "viewport")
 	oui.end(uictx)
-	if doc.kind == .Font do panel_right_font()
-	else do panel_right()
+	if doc.kind == .Font do panel_font()
+	panel_right()
 	oui.end(uictx)
 	panel_status()
 }
@@ -87,7 +87,7 @@ panel_viewport :: proc(vp: Rect) {
 // Menu bar -----------------------------------------------------------------------------------------------
 
 MENU_TITLES_SVG := [?]string{"File", "Edit", "Object", "Path", "Text", "View", "Help"}
-MENU_TITLES_FONT := [?]string{"File", "Edit", "Font", "View", "Help"}
+MENU_TITLES_FONT := [?]string{"File", "Edit", "Object", "Path", "Text", "Font", "View", "Help"}
 
 menu_titles :: proc() -> []string {
 	if doc != nil && doc.kind == .Font do return MENU_TITLES_FONT[:]
@@ -148,9 +148,12 @@ menu_build :: proc(idx: int) {
 		item("Align Bottom", cmd = .Align_Bottom)
 		item("Distribute Horizontally", cmd = .Distribute_H)
 		item("Distribute Vertically", cmd = .Distribute_V)
-		popup_sep()
-		item("Page Size...", cmd = .Page_Size)
-		item("Fit Page to Content", cmd = .Fit_Page_To_Content)
+		if doc.kind == .Svg {
+			// a glyph's page is its advance width and the em, set in the font panel
+			popup_sep()
+			item("Page Size...", cmd = .Page_Size)
+			item("Fit Page to Content", cmd = .Fit_Page_To_Content)
+		}
 	case "Path":
 		item("Object to Path", cmd = .Object_To_Path)
 		item("Stroke to Path", cmd = .Stroke_To_Path)
@@ -173,6 +176,8 @@ menu_build :: proc(idx: int) {
 		item("Add Glyphs...", cmd = .Font_Add_Glyphs)
 		item("Fix Contour Direction", cmd = .Font_Fix_Direction)
 		item("Remove Overlap (glyph)", cmd = .Font_Remove_Overlap)
+		item("Previous Glyph", cmd = .Font_Prev_Glyph)
+		item("Next Glyph", cmd = .Font_Next_Glyph)
 		popup_sep()
 		item("Export TrueType...", cmd = .Font_Export)
 	case "View":
@@ -280,7 +285,6 @@ panel_toolbar :: proc() {
 	OP_ITEM :: 1000 // popup values of path operations: OP_ITEM + index into PATH_OPS
 	cg := current_group()
 	for &g, gi in tool_groups {
-		if !group_visible(&g) do continue
 		oui.element(uictx, fmt.tprintf("g%d", gi), "tool-group")
 		// header: the name on the left, the hotkey as a keycap on the right
 		// (click the keycap for options; right-click the header for rename / remove)
@@ -327,7 +331,6 @@ panel_toolbar :: proc() {
 		}
 		oui.element(uictx, "items", "group-items")
 		for tool, ti in g.tools {
-			if !tool_available(tool) do continue
 			lit := cur_tool == tool && cg == gi
 			clicked, bn := oui_icon_button(fmt.tprintf("t%d", int(tool)), TOOL_ICONS[tool], TOOL_NAMES[tool], {class = "tool", lit = lit, enabled = true, icon_lg = true})
 			if clicked {
@@ -394,10 +397,8 @@ panel_toolbar :: proc() {
 			append(&tool_groups, Tool_Group{})
 		}
 	}
-	if doc.kind == .Svg {
-		oui.separator(uictx, "chips-sep")
-		oui_slot("paint-chips", "paint_chips")
-	}
+	oui.separator(uictx, "chips-sep")
+	oui_slot("paint-chips", "paint_chips")
 }
 
 // Fill and stroke chips below the tool groups: the selection's paints (or the drawing defaults).
@@ -496,7 +497,7 @@ panel_status :: proc() {
 	oui.separator(uictx, "sep0")
 	// the readout under the pointer changes every frame, so it is drawn by hand
 	oui_slot("cursor-info", "cursor_info")
-	if d.kind == .Svg && len(d.sel) > 0 {
+	if len(d.sel) > 0 {
 		oui.separator(uictx, "sep1")
 		oui.label(uictx, "sel", fmt.tprintf("%d selected", len(d.sel)))
 	}
@@ -505,17 +506,15 @@ panel_status :: proc() {
 		oui.label(uictx, "pen", s)
 		oui.separator(uictx, "sep2")
 	}
-	if d.kind == .Svg {
-		oui.label(uictx, "size", fmt.tprintf("%d x %d", int(math.round(d.w)), int(math.round(d.h))))
-		oui.separator(uictx, "sep3")
-	}
+	oui.label(uictx, "size", fmt.tprintf("%d x %d", int(math.round(d.w)), int(math.round(d.h))))
+	oui.separator(uictx, "sep3")
 	oui.label(uictx, "zoom", fmt.tprintf("%d%%", int(math.round(d.zoom * 100))), {class = "strong"})
 }
 
-// Pointer position in document units, in the status bar.
+// Pointer position in document units (font units, y up, for a glyph), in the status bar.
 panel_cursor_info :: proc(r: Rect) {
 	d := doc
-	if d.kind != .Svg do return
 	p := to_doc(d, pointer())
+	if d.kind == .Font do p.y = d.font.em_top - p.y
 	text(r.x, r.y + (r.h - FONT_CAP) / 2, fmt.tprintf("%d, %d", int(p.x), int(p.y)), C_TEXT)
 }

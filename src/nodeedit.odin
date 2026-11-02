@@ -451,7 +451,7 @@ pen_finish :: proc(keep: bool) {
 	n := node_find(d.root, tl.pen_uid)
 	if n != nil {
 		if keep && len(tl.pen_pts) >= 2 {
-			if pen_closed && d.kind != .Font do n.fill = cur_fill
+			if pen_closed do n.fill = cur_fill
 			sel_set(d, n)
 		} else {
 			if p := node_parent(d.root, n); p != nil {
@@ -484,10 +484,8 @@ tool_pen :: proc(d: ^Doc, p, sp: Vec2, pressed, over: bool) {
 		if tl.pen_uid == 0 {
 			history_push(d)
 			n := new_shape(d, .Path)
-			if d.kind != .Font {
-				n.fill = paint_none()
-				if n.stroke.kind == .None do n.stroke = paint_solid({40, 30, 24, 255})
-			}
+			n.fill = paint_none()
+			if n.stroke.kind == .None do n.stroke = paint_solid({40, 30, 24, 255})
 			append(&d.root.children, n)
 			tl.pen_uid = n.uid
 			clear(&tl.pen_pts)
@@ -593,10 +591,8 @@ tool_freehand :: proc(d: ^Doc, p, sp: Vec2, pressed, over: bool) {
 	closed := len(pts) > 3 && v_len(pts[0] - pts[len(pts) - 1]) * d.zoom < 10
 	history_push(d)
 	n := new_shape(d, .Path)
-	if d.kind != .Font {
-		n.fill = paint_none()
-		if n.stroke.kind == .None do n.stroke = paint_solid({40, 30, 24, 255})
-	}
+	n.fill = paint_none()
+	if n.stroke.kind == .None do n.stroke = paint_solid({40, 30, 24, 255})
 	path_move(&n.segs, pts[0])
 	if closed {
 		pts[len(pts) - 1] = pts[0]
@@ -604,7 +600,7 @@ tool_freehand :: proc(d: ^Doc, p, sp: Vec2, pressed, over: bool) {
 	fit_curve(pts, tol * tol, &n.segs)
 	if closed {
 		path_close(&n.segs)
-		if d.kind != .Font do n.fill = cur_fill
+		n.fill = cur_fill
 	}
 	append(&d.root.children, n)
 	sel_set(d, n)

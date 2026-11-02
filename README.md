@@ -21,7 +21,7 @@ default): pressing it picks the tool last used from that group, pressing it agai
   act on the selection at once and are greyed out until enough objects are selected. The default **Path** group (6) holds
   the booleans; the hotkey of a group with operations but no tools repeats the operation last used from it.
 - **+ New Group** adds an empty group (up to 12). View > Reset Tool Groups brings back the defaults.
-- Groups are saved in `scales.cfg`. In font documents, the text and eyedropper tools (and a group of only those) are hidden.
+- Groups are saved in `scales.cfg`.
 - **Canvas mode** (Tab, or the button at the right of the menu bar) hides the toolbar, tabs and side panels; a bar along the
   bottom shows each group as `[key] -> current tool`.
 
@@ -48,9 +48,14 @@ Properties.
   patterns) are skipped and the status bar says so.
 
 ## Font editing
-- Create a font, or open a `.ttf` / `.otf` (TrueType and CFF outlines, composites are flattened). Every glyph is edited with the same
-  tools as an SVG: draw, trace over an image, use booleans, transform.
-- Metric guides: baseline, x-height, cap height, ascender, descender, origin and advance width.
+- Create a font, or open a `.ttf` / `.otf` (TrueType and CFF outlines, composites are flattened). A font document has the same
+  interface as an SVG (every tool, the Object / Path / Text menus, the objects and properties panel) plus a **Font** menu and a
+  font panel. Each glyph is a drawing of its own: shapes, groups, hidden and locked objects and its undo history stay with the
+  glyph when you move to another one.
+- The glyph's outline is everything visible as it is painted: fills, and strokes as their outline shape. Hide an object to leave it
+  out.
+- Metric guides on the canvas: baseline, x-height, cap height, ascender, descender, origin and advance width. The status bar shows
+  the pointer in font units.
 - Glyph grid with thumbnails and a filter, add whole character sets (A-Z, a-z, digits, punctuation, ASCII, Latin-1), edit glyph name,
   code point and advance width, center a glyph, fit the advance to the outline.
 - **Fix direction** orients contours the TrueType way, **Remove overlap** merges overlapping strokes into clean outlines. Overlap
@@ -111,7 +116,8 @@ Pangolin Paints).
 
 ## Known limits
 - Fonts: simple glyphs only on export (composites are flattened on import), no hinting, no kerning editor (the `kern` table is only written if
-  pairs exist), imports at most 3000 glyphs of a font, and undo history is per glyph (it resets when you switch glyphs).
+  pairs exist), imports at most 3000 glyphs of a font, and undo history is per glyph. Fix direction turns a glyph whose contours
+  it changes back into a single path.
 - SVG: `tspan` colour overrides, text on a path, clip paths, masks, filters, patterns and embedded images are not supported.
 
 ## License

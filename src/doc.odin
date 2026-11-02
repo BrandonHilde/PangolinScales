@@ -381,11 +381,6 @@ new_shape :: proc(d: ^Doc, kind: Node_Kind) -> ^Node {
 	n.stroke = cur_stroke
 	n.sw = cur_sw
 	n.cap, n.join = cur_cap, cur_join
-	if d.kind == .Font {
-		// glyph outlines are plain filled shapes
-		n.fill = paint_solid(GLYPH_FILL)
-		n.stroke = paint_none()
-	}
 	label := [Node_Kind]string {
 		.Group   = "Group",
 		.Path    = "Path",

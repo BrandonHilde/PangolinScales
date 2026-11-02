@@ -7,7 +7,8 @@ import "core:strings"
 import oui "odinui:odinui"
 
 // ---------------------------------------------------------------------------
-// Font mode user interface: the glyph editing viewport with metric guides, and the glyph / metrics panel.
+// Font mode user interface: the metric guides over the canvas, and the font panel (glyphs, metrics, export) shown
+// beside the usual objects and properties panel.
 // ---------------------------------------------------------------------------
 
 Thumb :: struct {
@@ -104,10 +105,10 @@ glyph_matches :: proc(g: ^Font_Glyph, filter: string) -> bool {
 font_prop_scroll: i32
 uni_buf: Name
 
-panel_right_font :: proc() {
+panel_font :: proc() {
 	d := doc
 	f := d.font
-	oui.element(uictx, "right", "sidepanel", {id = "right"})
+	oui.element(uictx, "font", "sidepanel", {id = "font"})
 	defer oui.end(uictx)
 	osection("glyphs-head", "Glyphs")
 	oui_slot("glyph-grid", "glyph_grid")
@@ -229,34 +230,8 @@ panel_font_props :: proc(d: ^Doc, r: Rect) {
 		if button(Rect{x, y, half, 16}, "Fix direction", "Orient all contours the TrueType way") do font_fix_direction(d)
 		if button(Rect{x + half + 4, y, half, 16}, "Remove overlap", "Merge overlapping contours of this glyph") do font_remove_overlap_current(d)
 		y += 22
-		if button(Rect{x, y, half, 16}, "Center glyph", "Center the outline in its advance width") {
-			font_sync(d)
-			bb := path_bounds(g.segs[:])
-			if !bounds_empty(bb) {
-				dx := (g.advance - (bb.x1 - bb.x0)) / 2 - bb.x0
-				for &s in g.segs {
-					s.p.x += dx
-					s.c1.x += dx
-					s.c2.x += dx
-				}
-				g.ver += 1
-				f.ver += 1
-				font_load_glyph(d, f.cur)
-				d.modified = true
-			}
-		}
-		if button(Rect{x + half + 4, y, half, 16}, "Fit advance", "Set the advance width to outline width + bearings") {
-			font_sync(d)
-			bb := path_bounds(g.segs[:])
-			if !bounds_empty(bb) {
-				lsb := max(bb.x0, 0)
-				g.advance = bb.x1 + lsb
-				g.ver += 1
-				f.ver += 1
-				font_load_glyph(d, f.cur)
-				d.modified = true
-			}
-		}
+		if button(Rect{x, y, half, 16}, "Center glyph", "Center the outline in its advance width") do font_center_glyph(d)
+		if button(Rect{x + half + 4, y, half, 16}, "Fit advance", "Set the advance width to outline width + bearings") do font_fit_advance(d)
 		y += 26
 	}
 

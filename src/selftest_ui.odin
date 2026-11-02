@@ -239,10 +239,15 @@ ui_selftest :: proc(t: ^Test_Run) {
 	fd := font_edit_doc(f, "t")
 	doc = fd
 	fd.zoom, fd.ox, fd.oy, fd.view_init = 0.5, 0, 0, true
-	check(t, len(fd.root.children) == 1, "font glyph loaded as a path")
+	font_select_glyph(fd, 0)
+	check(t, len(fd.root.children) == 1 && fd.root.children[0].kind == .Path, "font glyph loaded as a path")
 	font_select_glyph(fd, 2)
 	cur_tool = .Rect
+	// a stroke would count towards the outline; draw a fill only so the bounds are the drag's
+	saved_stroke := cur_stroke
+	cur_stroke = paint_none()
 	sim_drag(fd, {100, 100}, {200, 300})
+	cur_stroke = saved_stroke
 	font_sync(fd)
 	g := font_cur(fd)
 	check(t, g != nil && len(g.segs) >= 5, "font tool edit is committed to the glyph")
@@ -258,7 +263,7 @@ ui_selftest :: proc(t: ^Test_Run) {
 }
 
 tool_groups_selftest :: proc(t: ^Test_Run) {
-	d := sim_doc()
+	sim_doc()
 	tool_groups_default()
 	set_tool(.Select)
 
@@ -281,14 +286,6 @@ tool_groups_selftest :: proc(t: ^Test_Run) {
 	check(t, current_group() == 4, "shared tool keeps the group it was picked from")
 	set_tool(.Rect)
 	check(t, current_group() == 2, "a tool picked by its own shortcut finds its group")
-
-	// font glyphs have no text or eyedropper: the Text group is skipped and hidden
-	d.kind = .Font
-	set_tool(.Select)
-	tool_group_activate(3)
-	check(t, cur_tool == .Select, "a group of unavailable tools does nothing")
-	check(t, !group_visible(&tool_groups[3]), "a group of unavailable tools is hidden")
-	d.kind = .Svg
 
 	// preferences round trip
 	name_set(&tool_groups[0].name, "Pick: me; now")
@@ -368,4 +365,69 @@ reorder_selftest :: proc(t: ^Test_Run) {
 	check(t, !node_reorder(d, g, x, true), "reorder: a group cannot go inside itself")
 	history_undo(d)
 	check(t, len(d.root.children) == 4 && len(d.root.children[3].children) == 1, "reorder: undo")
+}
+
+// A glyph is edited like a drawing: its shapes, layers and history survive moving to another glyph and back,
+// and its outline is every visible fill and stroke.
+font_edit_selftest :: proc(t: ^Test_Run) {
+	f := font_new_blank()
+	d := font_edit_doc(f, "glyphs")
+	doc = d
+	tools_cancel()
+	a := f.cur // "A", empty
+	check(t, len(d.root.children) == 0, "font: an empty glyph has no shapes")
+
+	history_push(d)
+	r := new_shape(d, .Rect)
+	r.x, r.y, r.w, r.h = 100, 100, 200, 700 // editing space: font y 0 ..= 700
+	r.fill, r.stroke = paint_solid(GLYPH_FILL), paint_none()
+	append(&d.root.children, r)
+	ln := new_shape(d, .Path)
+	path_move(&ln.segs, {400, 300})
+	path_line(&ln.segs, {400, 700})
+	ln.fill, ln.stroke, ln.sw = paint_none(), paint_solid(BLACK), 20
+	g := new_shape(d, .Group)
+	append(&g.children, ln)
+	append(&d.root.children, g)
+	doc_changed(d)
+	font_sync(d)
+	b := path_bounds(f.glyphs[a].segs[:])
+	check(t, near(b.x0, 100, 0.5) && near(b.y0, 0, 0.5) && near(b.y1, 700, 0.5), "font: a filled shape becomes outline")
+	check(t, near(b.x1, 410, 0.5), "font: a stroke-only shape becomes outline")
+
+	font_select_glyph(d, a + 1)
+	check(t, len(d.root.children) == 0 && len(d.undo) == 0, "font: another glyph starts with its own shapes and history")
+	font_select_glyph(d, a)
+	check(t, len(d.root.children) == 2 && d.root.children[1].kind == .Group && len(d.root.children[1].children) == 1, "font: shapes and groups come back with the glyph")
+	check(t, len(d.undo) == 1, "font: history comes back with the glyph")
+
+	// the ascender moves the editing space; the outline stays put in font units, here and in a stored glyph
+	f.asc = 900
+	font_metrics_changed(d)
+	font_sync(d)
+	b2 := path_bounds(f.glyphs[a].segs[:])
+	check(t, near(b2.y0, 0, 0.5) && near(b2.y1, 700, 0.5), "font: metrics change keeps the outline")
+	font_select_glyph(d, a + 1)
+	f.asc = 750
+	font_metrics_changed(d)
+	font_select_glyph(d, a)
+	font_sync(d)
+	b3 := path_bounds(f.glyphs[a].segs[:])
+	check(t, len(d.root.children) == 2 && near(b3.y0, 0, 0.5) && near(b3.y1, 700, 0.5), "font: a stored glyph follows the metrics")
+
+	font_center_glyph(d)
+	font_sync(d)
+	b4 := path_bounds(f.glyphs[a].segs[:])
+	adv := f.glyphs[a].advance
+	check(t, near(b4.x0, adv - b4.x1, 0.5), "font: center glyph")
+	history_undo(d)
+	font_sync(d)
+	check(t, near(path_bounds(f.glyphs[a].segs[:]).x0, 100, 0.5), "font: center glyph undoes")
+
+	// an outline changed from outside (overlap removal) replaces the shapes, undoably
+	font_remove_overlap_current(d)
+	check(t, len(d.root.children) == 1 && d.root.children[0].kind == .Path, "font: remove overlap merges the shapes")
+	history_undo(d)
+	check(t, len(d.root.children) == 2, "font: remove overlap undoes")
+	tools_cancel()
 }

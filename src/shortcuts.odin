@@ -64,10 +64,7 @@ shortcuts_update :: proc() {
 	// group hotkeys come before the single-key tool shortcuts, so a group can take over a letter
 	if tool_groups_hotkeys() do return
 
-	if d.kind == .Font {
-		font_shortcuts(d)
-		return
-	}
+	if d.kind == .Font do font_shortcuts(d)
 
 	// tools
 	switch {
