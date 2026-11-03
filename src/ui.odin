@@ -55,11 +55,14 @@ UI :: struct {
 	hover_id:            u32,
 	hover_t:             f32,
 	hover_seen:          bool,
+	hover_next_id:       u32, // what was hovered this frame: the last control to ask wins
+	hover_next_tip:      Tip,
 	layer, input_layer:  int,
 	chars:               [dynamic]rune,
 	dt:                  f32,
 	time:                f64,
-	tip:                 string,
+	tip:                 Tip,
+	tip_desc:            bool, // the pointer has stayed long enough for the description
 	cursor:              MouseCursor,
 
 	caret:               int,
@@ -68,6 +71,7 @@ UI :: struct {
 	popup_result_id:     u32,
 	popup_result_val:    int,
 	last_click_t:        f64,
+	last_click_pos:      Vec2,
 	last_click_id:       u32,
 	dbl_click:           bool,
 	ctrl, shift, alt:    bool,
@@ -264,17 +268,19 @@ ui_begin_frame :: proc() {
 	ui.time = gfx_time()
 	ui.cursor = .DEFAULT
 	ui.hide_cursor = false
-	ui.tip = ""
+	ui.tip, ui.tip_desc = {}, false
 	ui.hover_seen = false
 	ui.ctrl = IsKeyDown(.LEFT_CONTROL) || IsKeyDown(.RIGHT_CONTROL)
 	ui.shift = IsKeyDown(.LEFT_SHIFT) || IsKeyDown(.RIGHT_SHIFT)
 	ui.alt = IsKeyDown(.LEFT_ALT) || IsKeyDown(.RIGHT_ALT)
 	ui.dbl_click = false
 	if ui.pressed[0] {
-		if ui.time - ui.last_click_t < 0.35 {
+		// two quick clicks in different places are two clicks, not a double click
+		if ui.time - ui.last_click_t < 0.35 && v_len(pointer() - ui.last_click_pos) < 5 {
 			ui.dbl_click = true
 		}
 		ui.last_click_t = ui.time
+		ui.last_click_pos = pointer()
 	}
 	ui.layer = 0
 }
@@ -316,14 +322,42 @@ ui_hover :: proc(r: Rect) -> bool {
 	return ui.layer == ui.input_layer && in_rect(r, ui.mx, ui.my)
 }
 
-tooltip_hover :: proc(id: u32, tip: string) {
+// What a tooltip says. The title shows first, and the description joins it under the title if the pointer stays.
+Tip :: struct {
+	title, desc: string,
+}
+
+TIP_TITLE_DELAY :: 0.45
+TIP_DESC_DELAY :: 1.2
+
+// The control under the pointer offers its tooltip. A control inside another asks after it and wins.
+tooltip_hover :: proc(id: u32, tip: Tip) {
 	ui.hover_seen = true
-	if ui.hover_id != id {
-		ui.hover_id = id
+	ui.hover_next_id, ui.hover_next_tip = id, tip
+}
+
+// Decides what to show this frame: the longer the pointer stays on a control, the more of its tooltip appears.
+tooltip_resolve :: proc() {
+	if !ui.hover_seen do return
+	if ui.hover_next_id != ui.hover_id {
+		ui.hover_id = ui.hover_next_id
 		ui.hover_t = 0
-	} else if ui.hover_t > 0.45 && tip != "" {
-		ui.tip = tip
+	} else if ui.hover_t > TIP_TITLE_DELAY {
+		ui.tip = ui.hover_next_tip
+		ui.tip_desc = ui.hover_t > TIP_DESC_DELAY
 	}
+}
+
+// Text that explains itself when the pointer rests on it.
+tip_text :: proc(x, y: i32, s: string, c: Color, tip: Tip) {
+	text(x, y, s, c)
+	r := Rect{x, y - 2, text_w(s), FONT_CAP + 4}
+	if ui_hover(r) do tooltip_hover(make_id(r, s), tip)
+}
+
+// A tooltip for a hand-drawn area that is not a control.
+tip_area :: proc(r: Rect, key: string, tip: Tip) {
+	if ui_hover(r) do tooltip_hover(make_id(r, key), tip)
 }
 
 key_hit :: proc(k: KeyboardKey) -> bool {
@@ -331,7 +365,7 @@ key_hit :: proc(k: KeyboardKey) -> bool {
 }
 
 // Generic press/hold/click behaviour.
-button_behavior :: proc(id: u32, r: Rect, tip: string) -> (clicked, held, hover: bool) {
+button_behavior :: proc(id: u32, r: Rect, tip: Tip) -> (clicked, held, hover: bool) {
 	hover = ui_hover(r)
 	if hover {
 		tooltip_hover(id, tip)
@@ -390,7 +424,7 @@ ctl_state :: proc(r: Rect, hover, held, on, enabled: bool) -> Color {
 	return fg
 }
 
-button :: proc(r: Rect, label: string, tip := "", enabled := true, highlight := false) -> bool {
+button :: proc(r: Rect, label: string, tip: Tip, enabled := true, highlight := false) -> bool {
 	id := make_id(r, label)
 	clicked, held, hover := button_behavior(id, r, tip)
 	if !enabled {
@@ -402,7 +436,7 @@ button :: proc(r: Rect, label: string, tip := "", enabled := true, highlight := 
 }
 
 // Filled call-to-action button (dialog OK).
-button_primary :: proc(r: Rect, label: string, tip := "") -> bool {
+button_primary :: proc(r: Rect, label: string, tip: Tip) -> bool {
 	id := make_id(r, label)
 	clicked, held, hover := button_behavior(id, r, tip)
 	fill := C_ACTIVE
@@ -413,8 +447,8 @@ button_primary :: proc(r: Rect, label: string, tip := "") -> bool {
 	return clicked
 }
 
-icon_button :: proc(r: Rect, ic: Icon, tip := "", active := false, enabled := true) -> bool {
-	id := make_id(r, tip)
+icon_button :: proc(r: Rect, ic: Icon, tip: Tip, active := false, enabled := true) -> bool {
+	id := make_id(r, tip.title)
 	clicked, held, hover := button_behavior(id, r, tip)
 	if !enabled {
 		clicked, held, hover = false, false, false
@@ -424,7 +458,7 @@ icon_button :: proc(r: Rect, ic: Icon, tip := "", active := false, enabled := tr
 	return clicked
 }
 
-toggle_button :: proc(r: Rect, ic: Icon, v: ^bool, tip := "") -> bool {
+toggle_button :: proc(r: Rect, ic: Icon, v: ^bool, tip: Tip) -> bool {
 	if icon_button(r, ic, tip, v^) {
 		v^ = !v^
 		return true
@@ -432,7 +466,7 @@ toggle_button :: proc(r: Rect, ic: Icon, v: ^bool, tip := "") -> bool {
 	return false
 }
 
-checkbox :: proc(x, y: i32, label: string, v: ^bool, tip := "") -> bool {
+checkbox :: proc(x, y: i32, label: string, v: ^bool, tip: Tip) -> bool {
 	r := Rect{x, y, 18 + text_w(label), 12}
 	id := make_id(r, label)
 	clicked, held, hover := button_behavior(id, r, tip)
@@ -499,7 +533,7 @@ slider_chunk :: proc(v, lo, hi: int, suffix: string, curve: f32, dir := 0) -> in
 }
 
 // `tint` colours the filled part (the colour picker uses its channel colours).
-slider :: proc(r: Rect, v: ^int, lo, hi: int, label: string, tip := "", suffix := "", curve: f32 = 1, div := 1, tint_in := Color{}) -> bool {
+slider :: proc(r: Rect, v: ^int, lo, hi: int, label: string, tip: Tip, suffix := "", curve: f32 = 1, div := 1, tint_in := Color{}) -> bool {
 	tint := tint_in == {} ? C_ACCENT : tint_in
 	id := make_id(r, label)
 	_, held, hover := button_behavior(id, r, tip)
@@ -675,7 +709,7 @@ draw_edit_box :: proc(r: Rect, buf: ^Name, focused: bool) {
 }
 
 // Single-line text field. Returns (changed, submitted).
-text_field :: proc(r: Rect, buf: ^Name, tip := "") -> (changed, submitted: bool) {
+text_field :: proc(r: Rect, buf: ^Name, tip: Tip) -> (changed, submitted: bool) {
 	id := make_id(r, "text")
 	focused := ui.focus_id == id
 	hover := ui_hover(r)
@@ -698,7 +732,7 @@ text_field :: proc(r: Rect, buf: ^Name, tip := "") -> (changed, submitted: bool)
 }
 
 // Numeric field: click to type, mouse wheel to nudge.
-field_int :: proc(r: Rect, v: ^int, lo, hi: int, tip := "") -> bool {
+field_int :: proc(r: Rect, v: ^int, lo, hi: int, tip: Tip) -> bool {
 	id := make_id(r, "int")
 	focused := ui.focus_id == id
 	hover := ui_hover(r)
@@ -758,6 +792,7 @@ Popup_Item :: struct {
 	checked: bool,
 	enabled: bool,
 	sep:     bool,
+	tip:     string, // the tooltip's description, under the label as its title: a constant, it outlives the frame
 	// grid popups only
 	icon:     Icon,
 	has_icon: bool,
@@ -799,8 +834,8 @@ popup_grid :: proc(cols: int) {
 	popup.cols = cols
 }
 
-popup_item_icon :: proc(label: string, value: int, ic: Icon) {
-	popup_item(label, value)
+popup_item_icon :: proc(label: string, value: int, ic: Icon, tip: string) {
+	popup_item(label, value, tip = tip)
 	popup.items[len(popup.items) - 1].icon = ic
 	popup.items[len(popup.items) - 1].has_icon = true
 }
@@ -816,13 +851,14 @@ popup_item_swatch :: proc(label: string, value: int, c: Color) {
 	popup.items[len(popup.items) - 1].has_color = true
 }
 
-popup_item :: proc(label: string, value := 0, cmd := Cmd.None, checked := false, enabled := true) {
+popup_item :: proc(label: string, value := 0, cmd := Cmd.None, checked := false, enabled := true, tip := "") {
 	it := Popup_Item {
 		label   = make_name(label),
 		value   = value,
 		cmd     = cmd,
 		checked = checked,
 		enabled = enabled,
+		tip     = tip != "" ? tip : cmd_help(cmd),
 	}
 	append(&popup.items, it)
 }
@@ -892,6 +928,7 @@ popup_run :: proc() {
 			continue
 		}
 		ir := Rect{box.x + 4, cy, box.w - 8, POPUP_ITEM_H}
+		tip_area(ir, "popup", Tip{name_str(&it.label), it.tip})
 		hover := ui_hover(ir) && it.enabled
 		if hover {
 			draw_rrect(f32(ir.x), f32(ir.y), f32(ir.w), f32(ir.h), RADIUS, C_ACTIVE)
@@ -1016,6 +1053,7 @@ popup_run_grid :: proc() {
 			hline(ir.x, ir.y, ir.w, C_RING_HI)
 			continue
 		}
+		tip_area(ir, "popup", Tip{name_str(&it.label), it.tip})
 		hover := ui_hover(ir) && it.enabled
 		if hover {
 			hovered = i
@@ -1053,7 +1091,7 @@ popup_run_grid :: proc() {
 }
 
 // Drop-down selector. Returns the newly picked index (one frame after the click).
-combo :: proc(r: Rect, items: []string, cur: int, tip := "") -> (new_val: int, changed: bool) {
+combo :: proc(r: Rect, items: []string, cur: int, tip: Tip) -> (new_val: int, changed: bool) {
 	id := make_id(r, "combo")
 	clicked, held, hover := button_behavior(id, r, tip)
 	fg := ctl_state(r, hover, held || popup.open && popup.owner == id, false, true)
@@ -1092,13 +1130,13 @@ combo :: proc(r: Rect, items: []string, cur: int, tip := "") -> (new_val: int, c
 	if clicked {
 		popup_begin(id, r, r.w)
 		for it, i in items {
-			popup_item(it, i, checked = i == cur)
+			popup_item(it, i, checked = i == cur, tip = tip.desc)
 		}
 	}
 	return
 }
 
-combo_enum :: proc(r: Rect, names: [$E]string, v: ^E, tip := "") -> bool {
+combo_enum :: proc(r: Rect, names: [$E]string, v: ^E, tip: Tip) -> bool {
 	items: [len(E)]string
 	for n, i in names {
 		items[i] = n
@@ -1112,13 +1150,43 @@ combo_enum :: proc(r: Rect, names: [$E]string, v: ^E, tip := "") -> bool {
 
 // Tooltip overlay --------------------------------------------------------------
 
+TIP_MAX_W :: 300
+TIP_LINE_H :: 13
+TIP_DESC_GAP :: 6 // between the title and the description
+
+// Breaks text at spaces into lines no wider than `max_w`. A single word wider than that stays whole.
+tooltip_wrap :: proc(s: string, max_w: i32, measure: proc(_: string) -> i32) -> []string {
+	lines := make([dynamic]string, context.temp_allocator)
+	start, last_space := 0, -1
+	for i := 0; i <= len(s); i += 1 {
+		if i < len(s) && s[i] != ' ' do continue
+		if measure(s[start:i]) > max_w && last_space > start {
+			append(&lines, s[start:last_space])
+			start = last_space + 1
+		}
+		last_space = i
+	}
+	if start < len(s) do append(&lines, s[start:])
+	return lines[:]
+}
+
 tooltip_draw :: proc() {
-	if ui.tip == "" || popup.open {
+	tooltip_resolve()
+	if ui.tip.title == "" {
 		return
 	}
-	tw := text_w(ui.tip)
-	w := tw + 14
-	h: i32 = 18
+	max_w := min(TIP_MAX_W, i32(ui.w) - 14)
+	title := tooltip_wrap(ui.tip.title, max_w, text_w)
+	desc := tooltip_wrap(ui.tip.desc, max_w, text_w)
+	title_w, desc_w: i32
+	for l in title do title_w = max(title_w, text_w(l))
+	for l in desc do desc_w = max(desc_w, text_w(l))
+	title_h := i32(len(title)) * TIP_LINE_H + 5
+	desc_h := len(desc) > 0 ? i32(len(desc)) * TIP_LINE_H + TIP_DESC_GAP : 0
+	show_desc := ui.tip_desc && len(desc) > 0
+	w := (show_desc ? max(title_w, desc_w) : title_w) + 14
+	h := show_desc ? title_h + desc_h : title_h
+	// beside the pointer. It grows down and to the right unless the window's edge makes it grow the other way.
 	x := ui.mx + 10
 	y := ui.my + 14
 	if x + w > i32(ui.w) {
@@ -1127,8 +1195,18 @@ tooltip_draw :: proc() {
 	if y + h > i32(ui.h) {
 		y = ui.my - h - 4
 	}
+	x, y = max(x, 0), max(y, 0)
 	draw_shadow(f32(x), f32(y + 2), f32(w), f32(h), 4, 6, Color{0, 0, 0, 130})
 	draw_rrect(f32(x), f32(y), f32(w), f32(h), 4, with_alpha(shade(C_PANEL_DK, 0.55), 248))
 	draw_rrect_outline(f32(x), f32(y), f32(w), f32(h), 4, C_RING_HI)
-	text(x + 7, y + (h - FONT_CAP) / 2, ui.tip, C_TEXT)
+	for l, i in title {
+		text(x + 7, y + 3 + i32(i) * TIP_LINE_H + (TIP_LINE_H - FONT_CAP) / 2, l, WHITE)
+	}
+	if show_desc {
+		dy := y + title_h + TIP_DESC_GAP - 2
+		hline(x + 7, y + title_h + TIP_DESC_GAP / 2 - 1, w - 14, C_RING_HI)
+		for l, i in desc {
+			text(x + 7, dy + i32(i) * TIP_LINE_H + (TIP_LINE_H - FONT_CAP) / 2, l, C_TEXT)
+		}
+	}
 }

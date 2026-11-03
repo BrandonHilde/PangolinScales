@@ -88,24 +88,36 @@ tool_node :: proc(d: ^Doc, p, sp: Vec2, pressed, over: bool) {
 				if seg_insert_at(d, n, sp) do return
 			}
 		}
-		hit := pick_node(d, p, true)
-		if hit != nil && (hit.kind == .Path || hit.kind == .Rect || hit.kind == .Ellipse) {
-			if hit.uid != tl.edit_uid {
-				history_push(d)
-				node_to_path(hit)
-				doc_changed(d)
-				tl.edit_uid = hit.uid
-				clear(&tl.anchors)
-			}
-			sel_set(d, hit)
-			return
-		}
+		hit, picked := pick_path_to_edit(d, p)
+		if picked do return
 		if !ui.shift do clear(&tl.anchors)
 		if hit == nil && n != nil {
 			tl.kind = .Marquee
 		}
 		return
 	}
+	node_drag_update(d, n, p, sp)
+}
+
+// Starts editing the path under `p`. `picked` is false when there is nothing editable there.
+@(private = "file")
+pick_path_to_edit :: proc(d: ^Doc, p: Vec2) -> (hit: ^Node, picked: bool) {
+	hit = pick_node(d, p, true)
+	if hit == nil || (hit.kind != .Path && hit.kind != .Rect && hit.kind != .Ellipse) do return hit, false
+	if hit.uid != tl.edit_uid {
+		history_push(d)
+		node_to_path(hit)
+		doc_changed(d)
+		tl.edit_uid = hit.uid
+		clear(&tl.anchors)
+	}
+	sel_set(d, hit)
+	return hit, true
+}
+
+// Follows the pointer during a gesture that began on an anchor or a control point, and ends it on release.
+@(private = "file")
+node_drag_update :: proc(d: ^Doc, n: ^Node, p, sp: Vec2) {
 	if tl.kind == .None do return
 	tl.cur = p
 	if !ui.down[0] {
@@ -136,6 +148,107 @@ tool_node :: proc(d: ^Doc, p, sp: Vec2, pressed, over: bool) {
 		doc_changed(d)
 	case .None, .Move, .Scale, .Rotate, .Marquee, .Create, .Freehand, .Pen, .Gradient:
 	}
+}
+
+// Control point tool ---------------------------------------------------------------------------------------
+//
+// Picks control points only, so an anchor or another control point lying on top can never get in the way. Where
+// several overlap, a click selects one, further clicks step through them and a drag moves the selected one.
+
+@(private = "file")
+Control_Hit :: struct {
+	ref:  Handle_Ref,
+	dist: f32,
+}
+
+// Every control point within reach of the pointer, nearest first, including those lying on their anchor.
+@(private = "file")
+control_points_at :: proc(d: ^Doc, n: ^Node, sp: Vec2) -> []Handle_Ref {
+	add :: proc(hits: ^[dynamic]Control_Hit, ref: Handle_Ref, dist: f32) {
+		if dist >= PICK_R do return
+		append(hits, Control_Hit{ref, dist})
+		for k := len(hits) - 1; k > 0 && hits[k - 1].dist > dist; k -= 1 {
+			hits[k - 1], hits[k] = hits[k], hits[k - 1]
+		}
+	}
+	w := node_world(d.root, n)
+	hits := make([dynamic]Control_Hit, context.temp_allocator)
+	for g, i in n.segs {
+		if g.kind == .Cubic do add(&hits, Handle_Ref{i, 2}, v_len(loc_to_scr(d, w, g.c2) - sp))
+		if g.kind == .Cubic || g.kind == .Quad do add(&hits, Handle_Ref{i, 1}, v_len(loc_to_scr(d, w, g.c1) - sp))
+	}
+	refs := make([]Handle_Ref, len(hits), context.temp_allocator)
+	for h, i in hits do refs[i] = h.ref
+	return refs
+}
+
+// The selected control point, if it still exists on this path (an undo can take it away).
+control_selected :: proc(n: ^Node) -> (ref: Handle_Ref, ok: bool) {
+	ref = tl.ctrl_sel
+	if !tl.ctrl_on || ref.seg >= len(n.segs) do return ref, false
+	k := n.segs[ref.seg].kind
+	return ref, k == .Cubic || (k == .Quad && ref.which == 1)
+}
+
+@(private = "file")
+control_select :: proc(ref: Handle_Ref, index, count: int) {
+	tl.ctrl_sel, tl.ctrl_on = ref, true
+	if count > 1 do set_statusf("Control point %d of %d: click for the next", index + 1, count)
+}
+
+tool_control :: proc(d: ^Doc, p, sp: Vec2, pressed, over: bool) {
+	n := edited_node(d)
+	if over && tl.kind == .None do ui.cursor = .DEFAULT
+	if pressed {
+		tl.start, tl.start_scr, tl.cur, tl.moved, tl.pushed = p, sp, p, false, false
+		tl.ctrl_cycle = false
+		if n != nil {
+			refs := control_points_at(d, n, sp)
+			if len(refs) > 0 {
+				index := 0
+				if cur, ok := control_selected(n); ok {
+					for r, i in refs {
+						if r == cur {
+							index = i
+							tl.ctrl_cycle = true
+						}
+					}
+				}
+				control_select(refs[index], index, len(refs))
+				copy_orig_path(n)
+				tl.hs = refs[index]
+				tl.kind = .Handle
+				return
+			}
+		}
+		tl.ctrl_on = false
+		pick_path_to_edit(d, p)
+		return
+	}
+	if tl.kind == .Handle && !ui.down[0] && !tl.moved && tl.ctrl_cycle && n != nil {
+		refs := control_points_at(d, n, tl.start_scr)
+		for r, i in refs {
+			if r == tl.ctrl_sel {
+				next := (i + 1) % len(refs)
+				control_select(refs[next], next, len(refs))
+				break
+			}
+		}
+	}
+	node_drag_update(d, n, p, sp)
+}
+
+// Moves the selected control point by `delta` in document space.
+control_nudge :: proc(d: ^Doc, delta: Vec2) {
+	n := edited_node(d)
+	if n == nil do return
+	ref, ok := control_selected(n)
+	if !ok do return
+	iw, iok := mat_inv(node_world(d.root, n))
+	if !iok do return
+	g := n.segs[ref.seg]
+	move_handle(n.segs[:], ref, (ref.which == 2 ? g.c2 : g.c1) + mat_apply_dir(iw, delta), ui.alt)
+	doc_changed(d)
 }
 
 tl_orig_path: Path
@@ -391,25 +504,43 @@ node_overlay :: proc(d: ^Doc) {
 		}
 		if sb.closed && sb.b - sb.a > 1 do draw_line(to_screen(d, poly.pts[sb.b - 1]), to_screen(d, poly.pts[sb.a]), C_SEL)
 	}
+	control := cur_tool == .Control
+	if control {
+		// anchors cannot be picked with this tool, so they are small marks under the control points
+		for g in n.segs {
+			if g.kind == .Close do continue
+			a := loc_to_scr(d, w, g.p)
+			draw_rect(a.x - 2, a.y - 2, 4, 4, C_SEL)
+		}
+	}
 	for g, i in n.segs {
 		if g.kind == .Close do continue
 		a := loc_to_scr(d, w, g.p)
-		if g.kind == .Cubic {
-			c2 := loc_to_scr(d, w, g.c2)
-			draw_line(a, c2, Color{200, 200, 220, 150})
-			draw_handle_dot(c2, Color{230, 230, 245, 255})
+		if g.kind == .Cubic || (control && g.kind == .Quad) {
+			if g.kind == .Cubic {
+				c2 := loc_to_scr(d, w, g.c2)
+				draw_line(a, c2, Color{200, 200, 220, 150})
+				draw_handle_dot(c2, Color{230, 230, 245, 255})
+			}
 			c1 := loc_to_scr(d, w, g.c1)
 			pp := loc_to_scr(d, w, prev_point(n.segs[:], i))
 			draw_line(pp, c1, Color{200, 200, 220, 150})
 			draw_handle_dot(c1, Color{230, 230, 245, 255})
 		}
-		draw_handle_sq(a, anchor_selected(i), C_SEL)
+		if !control do draw_handle_sq(a, anchor_selected(i), C_SEL)
+	}
+	if ref, ok := control_selected(n); ok && control {
+		g := n.segs[ref.seg]
+		c := loc_to_scr(d, w, ref.which == 2 ? g.c2 : g.c1)
+		draw_rrect(c.x - 6, c.y - 6, 13, 13, 6.5, Color{20, 22, 28, 255}) // a thicker ring than the others
+		draw_handle_dot(c, C_ACCENT)
 	}
 }
 
 // Pen -----------------------------------------------------------------------------------------------------
 
 pen_closed: bool
+pen_close_curved: bool // the closing segment was dragged out from the first point
 
 pen_drawing :: proc() -> bool {
 	return len(tl.pen_pts) > 0
@@ -425,8 +556,9 @@ pen_rebuild :: proc(d: ^Doc) {
 			path_move(&n.segs, pt.p)
 			continue
 		}
+		// a segment curves only if it was dragged at the point it ends on: a click always draws a straight line
 		prev := pts[i - 1]
-		if prev.has || pt.has {
+		if pt.has {
 			path_cubic(&n.segs, prev.p + prev.hout, pt.p + pt.hin, pt.p)
 		} else {
 			path_line(&n.segs, pt.p)
@@ -434,7 +566,7 @@ pen_rebuild :: proc(d: ^Doc) {
 	}
 	if pen_closed && len(pts) > 1 {
 		last, first := pts[len(pts) - 1], pts[0]
-		if last.has || first.has do path_cubic(&n.segs, last.p + last.hout, first.p + first.hin, first.p)
+		if pen_close_curved do path_cubic(&n.segs, last.p + last.hout, first.p + first.hin, first.p)
 		path_close(&n.segs)
 	}
 	doc_changed(d)
@@ -467,7 +599,7 @@ pen_finish :: proc(keep: bool) {
 	}
 	clear(&tl.pen_pts)
 	tl.pen_uid = 0
-	pen_closed = false
+	pen_closed, pen_close_curved = false, false
 	tl.kind = .None
 }
 
@@ -476,9 +608,11 @@ tool_pen :: proc(d: ^Doc, p, sp: Vec2, pressed, over: bool) {
 	q := snap_pt(p)
 	if pressed {
 		if len(tl.pen_pts) >= 2 && v_len(to_screen(d, tl.pen_pts[0].p) - sp) < 9 {
+			// closes when the button is released: a drag from here curves the closing segment
 			pen_closed = true
+			tl.kind = .Pen
+			tl.start_scr = sp
 			pen_rebuild(d)
-			pen_finish(true)
 			return
 		}
 		if tl.pen_uid == 0 {
@@ -506,9 +640,15 @@ tool_pen :: proc(d: ^Doc, p, sp: Vec2, pressed, over: bool) {
 	if tl.kind == .Pen {
 		if !ui.down[0] {
 			tl.kind = .None
+			if pen_closed do pen_finish(true)
 			return
 		}
-		if v_len(sp - tl.start_scr) > 3 && len(tl.pen_pts) > 0 {
+		if v_len(sp - tl.start_scr) > 3 && pen_closed {
+			first := &tl.pen_pts[0]
+			first.hin = first.p - q
+			pen_close_curved = true
+			pen_rebuild(d)
+		} else if v_len(sp - tl.start_scr) > 3 && len(tl.pen_pts) > 0 {
 			pt := &tl.pen_pts[len(tl.pen_pts) - 1]
 			off := q - pt.p
 			pt.hout, pt.hin, pt.has = off, -off, true
@@ -531,18 +671,8 @@ pen_overlay :: proc(d: ^Doc) {
 		last := tl.pen_pts[len(tl.pen_pts) - 1]
 		cur := to_doc(d, pointer())
 		cur = snap_pt(cur)
-		// rubber band, curved if the last point has a handle
-		a := to_screen(d, last.p)
-		prev := last.p
-		for k in 1 ..= 16 {
-			t := f32(k) / 16
-			pt: Vec2
-			if last.has do pt = cubic_at(last.p, last.p + last.hout, cur, cur, t)
-			else do pt = lerp(last.p, cur, t)
-			draw_line(to_screen(d, prev), to_screen(d, pt), Color{60, 160, 255, 110})
-			prev = pt
-		}
-		_ = a
+		// rubber band: the straight line a click would draw
+		draw_line(to_screen(d, last.p), to_screen(d, cur), Color{60, 160, 255, 110})
 	}
 	for pt, i in tl.pen_pts {
 		a := to_screen(d, pt.p)
@@ -588,7 +718,7 @@ tool_freehand :: proc(d: ^Doc, p, sp: Vec2, pressed, over: bool) {
 	pts := tl.free_pts[:]
 	if len(pts) < 2 do return
 	tol := smoothing / d.zoom
-	closed := len(pts) > 3 && v_len(pts[0] - pts[len(pts) - 1]) * d.zoom < 10
+	closed := close_open_paths && len(pts) > 3 && v_len(pts[0] - pts[len(pts) - 1]) * d.zoom < 10
 	history_push(d)
 	n := new_shape(d, .Path)
 	n.fill = paint_none()

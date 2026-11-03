@@ -103,7 +103,55 @@ ui_selftest :: proc(t: ^Test_Run) {
 		p := d3.root.children[0]
 		kinds := 0
 		for g in p.segs do if g.kind == .Cubic do kinds += 1
-		check(t, p.kind == .Path && p.segs[len(p.segs) - 1].kind == .Close && kinds >= 1, "pen path closed with a curve")
+		check(t, p.kind == .Path && p.segs[len(p.segs) - 1].kind == .Close && kinds >= 1, "pen path closes and keeps its curve")
+	}
+
+	// pen tool: a click draws a straight segment, whatever the points around it look like
+	{
+		pen_kinds :: proc(n: ^Node) -> (lines, cubics: int) {
+			for g in n.segs {
+				if g.kind == .Line do lines += 1
+				if g.kind == .Cubic do cubics += 1
+			}
+			return
+		}
+		// two curves, then a straight line by clicking
+		ds := sim_doc()
+		cur_tool = .Pen
+		sim_drag(ds, {50, 50}, {70, 30})
+		sim_drag(ds, {150, 50}, {170, 70})
+		sim_drag(ds, {250, 50}, {270, 30})
+		sim_click(ds, {250, 150})
+		ps := ds.root.children[0]
+		c1, l1 := ps.segs[1], ps.segs[3]
+		check(t, ps.segs[1].kind == .Cubic && ps.segs[2].kind == .Cubic, "pen: dragged points make curves")
+		check(t, l1.kind == .Line && l1.p == Vec2{250, 150}, "pen: a click after a curve draws a straight line")
+		check(t, c1.c1 == Vec2{70, 30} && c1.c2 == Vec2{130, 30}, "pen: curves use the handles of both ends")
+
+		// clicking the first point closes straight, even though the first and last points were dragged
+		sim_click(ds, {50, 50})
+		lines, cubics := pen_kinds(ps)
+		check(t, !pen_drawing() && ps.segs[len(ps.segs) - 1].kind == .Close, "pen: clicking the first point closes the path")
+		check(t, cubics == 2 && lines == 1, "pen: clicking the first point closes with a straight line")
+
+		dt := sim_doc()
+		sim_drag(dt, {50, 50}, {70, 30})
+		sim_drag(dt, {150, 50}, {170, 70})
+		sim_click(dt, {50, 50})
+		pt := dt.root.children[0]
+		_, cubics = pen_kinds(pt)
+		check(t, !pen_drawing() && cubics == 1, "pen: closing right after a curve is still straight")
+
+		// dragging from the first point closes with a curve
+		du := sim_doc()
+		sim_click(du, {50, 50})
+		sim_click(du, {150, 50})
+		sim_drag(du, {50, 50}, {30, 70})
+		pu := du.root.children[0]
+		_, cubics = pen_kinds(pu)
+		check(t, !pen_drawing() && cubics == 1 && pu.segs[len(pu.segs) - 1].kind == .Close, "pen: dragging the first point closes with a curve")
+		if cubics == 1 do check(t, pu.segs[2].c2 == Vec2{70, 30} && pu.segs[2].p == Vec2{50, 50}, "pen: the closing drag sets the curve's handle")
+		cur_tool = .Select
 	}
 
 	// node tool: drag the first anchor
@@ -117,6 +165,61 @@ ui_selftest :: proc(t: ^Test_Run) {
 		check(t, near(after.x, before.x + 20, 0.5) && near(after.y, before.y + 30, 0.5), "node drag moves the anchor")
 	}
 	tools_cancel()
+
+	// control point tool: overlapping control points can each be picked, and anchors never are
+	{
+		dq := sim_doc()
+		q := new_shape(dq, .Path)
+		q.fill, q.stroke = paint_none(), paint_solid({40, 30, 24, 255})
+		path_move(&q.segs, {100, 100})
+		path_cubic(&q.segs, {150, 100}, {200, 200}, {200, 200}) // second control point on the anchor
+		path_cubic(&q.segs, {200, 200}, {250, 200}, {300, 200}) // first control point on the same anchor
+		path_quad(&q.segs, {340, 240}, {380, 200})
+		append(&dq.root.children, q)
+		set_tool(.Control)
+		sim_click(dq, {100, 100}) // no control point here: picks the path by its edge
+		check(t, tl.edit_uid == q.uid, "control tool picks the path")
+		check(t, !tl.ctrl_on, "picking the path selects no control point")
+
+		ref1, ref2 := Handle_Ref{1, 2}, Handle_Ref{2, 1}
+		sim_click(dq, {200, 200})
+		check(t, tl.ctrl_on && tl.ctrl_sel == ref1, "first click selects one of the overlapping control points")
+		sim_click(dq, {200, 200})
+		check(t, tl.ctrl_sel == ref2, "next click selects the other control point")
+		sim_click(dq, {200, 200})
+		check(t, tl.ctrl_sel == ref1, "clicks wrap around the overlapping control points")
+		check(t, q.segs[1].p == Vec2{200, 200} && q.segs[1].c2 == Vec2{200, 200} && q.segs[2].c1 == Vec2{200, 200}, "clicking moves nothing")
+
+		sim_click(dq, {200, 200})
+		undo_q := len(dq.undo)
+		sim_drag(dq, {200, 200}, {210, 230})
+		check(t, q.segs[2].c1 == Vec2{210, 230}, "drag moves the selected control point")
+		check(t, q.segs[1].c2 == Vec2{200, 200} && q.segs[1].p == Vec2{200, 200}, "drag leaves the anchor and the other control point")
+		check(t, len(dq.undo) == undo_q + 1, "a drag is one undo step")
+		history_undo(dq)
+		q = dq.root.children[0]
+		check(t, q.segs[2].c1 == Vec2{200, 200}, "undo restores the control point")
+
+		// anchors do not react
+		sim_drag(dq, {300, 200}, {320, 220})
+		check(t, q.segs[2].p == Vec2{300, 200}, "the control tool cannot move an anchor")
+		check(t, !tl.ctrl_on, "pressing away from control points clears the selection")
+
+		// quadratic control points can be picked too
+		sim_drag(dq, {340, 240}, {345, 250})
+		check(t, q.segs[3].c1 == Vec2{345, 250}, "the control tool moves a quadratic control point")
+		control_nudge(dq, {1, -1})
+		check(t, q.segs[3].c1 == Vec2{346, 249}, "nudge moves the selected control point")
+
+		set_tool(.Node)
+		check(t, tl.edit_uid == q.uid, "node tool keeps the path from the control tool")
+		sim_drag(dq, {300, 200}, {320, 220})
+		check(t, q.segs[2].p == Vec2{320, 220}, "the node tool still moves anchors")
+		set_tool(.Control)
+		check(t, tl.edit_uid == q.uid, "control tool keeps the path from the node tool")
+		set_tool(.Select)
+		check(t, tl.edit_uid == 0, "other tools end the editing session")
+	}
 
 	// freehand: a curvy stroke becomes few cubic segments
 	d4 := sim_doc()
@@ -162,6 +265,161 @@ ui_selftest :: proc(t: ^Test_Run) {
 	append(&d5.sel, d5.root.children[0].uid)
 	cmd_text_outlines(d5)
 	check(t, d5.root.children[0].kind == .Path, "text converts to outlines")
+
+	// booleans keep lines, which have no area
+	{
+		dl := sim_doc()
+		add_line :: proc(d: ^Doc, a, b: Vec2) -> ^Node {
+			n := new_shape(d, .Path)
+			n.fill = paint_none()
+			n.stroke = paint_solid({40, 30, 24, 255})
+			path_move(&n.segs, a)
+			path_line(&n.segs, b)
+			append(&d.root.children, n)
+			append(&d.sel, n.uid)
+			return n
+		}
+		add_line(dl, {10, 10}, {60, 60})
+		add_line(dl, {10, 60}, {60, 10})
+		run_cmd(.Union)
+		check(t, len(dl.root.children) == 1 && dl.root.children[0].kind == .Path, "union of two lines makes one path")
+		if len(dl.root.children) == 1 {
+			s := dl.root.children[0].segs
+			check(t, len(s) == 4 && s[0].kind == .Move && s[2].kind == .Move, "union of two lines keeps both lines")
+			check(t, len(dl.sel) == 1, "union of two lines selects the result")
+		}
+		run_cmd(.Intersect) // one object selected: refused for another reason, nothing changes
+		check(t, len(dl.root.children) == 1, "boolean with one object changes nothing")
+
+		dm := sim_doc()
+		add_line(dm, {10, 10}, {60, 60})
+		r := new_shape(dm, .Rect)
+		r.x, r.y, r.w, r.h = 20, 20, 10, 10
+		append(&dm.root.children, r)
+		append(&dm.sel, r.uid)
+		for op in ([?]Cmd{.Union, .Subtract, .Intersect, .Exclude}) {
+			run_cmd(op)
+			check(t, len(dm.root.children) == 2, "boolean of a line and a shape keeps both")
+		}
+
+		dd := sim_doc()
+		add_line(dd, {10, 10}, {60, 60})
+		add_line(dd, {10, 60}, {60, 10})
+		run_cmd(.Intersect)
+		check(t, len(dd.root.children) == 2, "intersect of two lines keeps both")
+
+		// disjoint shapes still intersect to nothing
+		de := sim_doc()
+		ra := new_shape(de, .Rect)
+		ra.x, ra.y, ra.w, ra.h = 0, 0, 10, 10
+		rb := new_shape(de, .Rect)
+		rb.x, rb.y, rb.w, rb.h = 40, 40, 10, 10
+		append(&de.root.children, ra, rb)
+		append(&de.sel, ra.uid, rb.uid)
+		run_cmd(.Intersect)
+		check(t, len(de.root.children) == 0, "intersect of disjoint shapes removes them")
+
+		// freehand strokes: Close Open Paths decides whether a boolean joins their ends
+		two_strokes :: proc() -> ^Doc {
+			d := sim_doc()
+			cur_tool = .Freehand
+			stroke :: proc(d: ^Doc, sign: f32) {
+				sim(d, 20, 150, true, true)
+				for i in 1 ..= 60 {
+					sim(d, 20 + f32(i) * 5, 150 + sign * math.sin(f32(i) * 0.15) * 60, false, true)
+				}
+				sim(d, 320, 170, false, false)
+			}
+			stroke(d, 1)
+			stroke(d, -1)
+			clear(&d.sel)
+			for n in d.root.children do append(&d.sel, n.uid)
+			return d
+		}
+		count_kind :: proc(segs: []Seg, k: Seg_Kind) -> int {
+			c := 0
+			for g in segs do if g.kind == k do c += 1
+			return c
+		}
+		check(t, !close_open_paths, "Close Open Paths starts off")
+		df := two_strokes()
+		check(t, len(df.root.children) == 2, "two freehand strokes")
+		run_cmd(.Union)
+		check(t, len(df.root.children) == 1, "union of open strokes makes one path")
+		if len(df.root.children) == 1 {
+			s := df.root.children[0].segs[:]
+			check(t, count_kind(s, .Close) == 0, "union leaves open strokes open")
+			check(t, count_kind(s, .Move) == 2, "union keeps both strokes")
+		}
+
+		dc := two_strokes()
+		add_rect := new_shape(dc, .Rect)
+		add_rect.x, add_rect.y, add_rect.w, add_rect.h = 100, 100, 50, 50
+		append(&dc.root.children, add_rect)
+		append(&dc.sel, add_rect.uid)
+		run_cmd(.Union)
+		check(t, len(dc.root.children) == 3, "union of open strokes and a shape is refused while the setting is off")
+
+		run_cmd(.Toggle_Close_Paths)
+		check(t, close_open_paths, "toggle turns Close Open Paths on")
+		dg := two_strokes()
+		run_cmd(.Union)
+		check(t, len(dg.root.children) == 1, "union with the setting on makes one path")
+		if len(dg.root.children) == 1 do check(t, count_kind(dg.root.children[0].segs[:], .Close) > 0, "union with the setting on closes open strokes")
+		dh := sim_doc()
+		add_line(dh, {10, 10}, {60, 60})
+		add_line(dh, {10, 60}, {60, 10})
+		run_cmd(.Union)
+		check(t, len(dh.root.children) == 1 && count_kind(dh.root.children[0].segs[:], .Move) == 2, "straight lines survive union with the setting on")
+		run_cmd(.Toggle_Close_Paths)
+		check(t, !close_open_paths, "toggle turns Close Open Paths off")
+
+		// a freehand stroke that ends near its start closes only with the setting on
+		loop_stroke :: proc() -> ^Node {
+			d := sim_doc()
+			cur_tool = .Freehand
+			sim(d, 100, 100, true, true)
+			for i in 1 ..= 30 {
+				a := f32(i) / 30 * 2 * math.PI
+				sim(d, 150 - 50 * math.cos(a), 100 + 50 * math.sin(a), false, true)
+			}
+			sim(d, 101, 100, false, false)
+			return d.root.children[0]
+		}
+		lo := loop_stroke()
+		check(t, count_kind(lo.segs[:], .Close) == 0 && lo.fill.kind == .None, "a freehand loop stays open by default")
+		run_cmd(.Toggle_Close_Paths)
+		lc := loop_stroke()
+		check(t, count_kind(lc.segs[:], .Close) == 1, "a freehand loop closes with the setting on")
+		run_cmd(.Toggle_Close_Paths)
+
+		// offset does not close an open path unless the setting is on; simplify never does
+		dj := two_strokes()
+		undo_before := len(dj.undo)
+		run_cmd(.Offset_Out)
+		check(t, len(dj.undo) == undo_before && count_kind(dj.root.children[0].segs[:], .Close) == 0, "offset refuses open paths by default")
+		run_cmd(.Simplify)
+		check(t, count_kind(dj.root.children[0].segs[:], .Close) == 0, "simplify keeps a path open")
+		run_cmd(.Toggle_Close_Paths)
+		run_cmd(.Offset_Out)
+		check(t, count_kind(dj.root.children[0].segs[:], .Close) > 0, "offset closes open paths with the setting on")
+		run_cmd(.Toggle_Close_Paths)
+		cur_tool = .Select
+
+		// a path that returns to its start has no gap to close, so it counts as a shape even without Close
+		di := sim_doc()
+		tri := new_shape(di, .Path)
+		path_move(&tri.segs, {10, 10})
+		path_line(&tri.segs, {50, 10})
+		path_line(&tri.segs, {10, 50})
+		path_line(&tri.segs, {10, 10})
+		ri := new_shape(di, .Rect)
+		ri.x, ri.y, ri.w, ri.h = 0, 0, 20, 20
+		append(&di.root.children, tri, ri)
+		append(&di.sel, tri.uid, ri.uid)
+		run_cmd(.Union)
+		check(t, len(di.root.children) == 1 && count_kind(di.root.children[0].segs[:], .Close) > 0, "a path back at its start unions as a shape")
+	}
 
 	// commands: union of two overlapping rects, group, duplicate, delete, align
 	d6 := sim_doc()
@@ -299,7 +557,7 @@ tool_groups_selftest :: proc(t: ^Test_Run) {
 	check(t, tool_groups[1].key == .TWO && tool_groups[2].key == .KEY_NULL, "groups round trip: hotkeys")
 	check(t, len(tool_groups[4].tools) == 3 && tool_groups[4].tools[2] == .Select, "groups round trip: tools")
 	check(t, len(tool_groups[6].tools) == 0 && len(tool_groups[6].ops) == 0, "groups round trip: empty group")
-	check(t, len(tool_groups[5].ops) == 6 && tool_groups[5].ops[1] == .Subtract && len(tool_groups[5].tools) == 0, "groups round trip: path operations")
+	check(t, len(tool_groups[5].ops) == 7 && tool_groups[5].ops[6] == .Toggle_Close_Paths && tool_groups[5].ops[1] == .Subtract && len(tool_groups[5].tools) == 0, "groups round trip: path operations")
 	tool_groups_parse("65:Pen,Nonsense,Pen:X;7:Rect")
 	check(t, len(tool_groups) == 2 && len(tool_groups[0].tools) == 1 && tool_groups[0].key == .A, "unknown tools and duplicates are dropped")
 	check(t, tool_groups[1].key == .KEY_NULL, "keys that are not letters or digits are dropped")
@@ -307,6 +565,47 @@ tool_groups_selftest :: proc(t: ^Test_Run) {
 	check(t, len(tool_groups) == 2 && tool_groups[0].name.n == 1, "groups saved before path operations still load")
 	tool_groups_parse("0::Ops:Union,Pen,Union,Offset_In")
 	check(t, len(tool_groups[0].ops) == 2 && tool_groups[0].ops[1] == .Offset_In, "only known path operations load, once each")
+
+	// tooltips: every command and tool explains itself, long text wraps, and the innermost control wins
+	for c in Cmd {
+		if c != .None do check(t, len(cmd_help(c)) > 15, "every command has help text")
+	}
+	for tool in Tool do check(t, len(TOOL_HELP[tool]) > 15, "every tool has help text")
+	check(t, cmd_tip("Union", .Union).title == "Union (Ctrl++)" && cmd_tip("Union", .Union).desc == cmd_help(.Union), "a command's tooltip: name and shortcut, then what it does")
+	for title in MENU_TITLES_FONT do check(t, menu_title_tip(title).desc != "", "every menu title has help text")
+	{
+		measure :: proc(s: string) -> i32 {return i32(len(s)) * 10}
+		lines := tooltip_wrap("aaa bbb ccc", 75, measure)
+		check(t, len(lines) == 2 && lines[0] == "aaa bbb" && lines[1] == "ccc", "tooltips wrap at spaces")
+		lines = tooltip_wrap("aaa", 75, measure)
+		check(t, len(lines) == 1 && lines[0] == "aaa", "a short tooltip stays on one line")
+		lines = tooltip_wrap("aaaaaaaaaaaaaaaaaaaa bb", 75, measure)
+		check(t, len(lines) == 2 && lines[0] == "aaaaaaaaaaaaaaaaaaaa" && lines[1] == "bb", "a word wider than a line stays whole")
+
+		saved_id, saved_t, saved_tip := ui.hover_id, ui.hover_t, ui.tip
+		ui.hover_id, ui.hover_t, ui.tip, ui.tip_desc = 0, 0, {}, false
+		ui.hover_seen = false
+		outer, inner := Tip{"outer", "outer text"}, Tip{"inner", "inner text"}
+		tooltip_hover(11, outer)
+		tooltip_hover(22, inner)
+		tooltip_resolve()
+		check(t, ui.hover_id == 22 && ui.tip.title == "", "the innermost control takes the hover, and its tooltip waits")
+		ui.hover_t = f32(TIP_TITLE_DELAY) + 0.01
+		tooltip_hover(11, outer)
+		tooltip_hover(22, inner)
+		tooltip_resolve()
+		check(t, ui.tip.title == "inner" && ui.hover_id == 22, "overlapping controls do not reset the wait")
+		check(t, !ui.tip_desc, "a tooltip starts with just its title")
+		ui.hover_t = f32(TIP_DESC_DELAY) + 0.01
+		tooltip_hover(22, inner)
+		tooltip_resolve()
+		check(t, ui.tip_desc && ui.tip.desc == "inner text", "the description appears if the pointer stays")
+		tooltip_hover(33, outer)
+		ui.tip, ui.tip_desc = {}, false
+		tooltip_resolve()
+		check(t, ui.hover_t == 0 && ui.tip.title == "" && !ui.tip_desc, "moving to another control starts again from nothing")
+		ui.hover_id, ui.hover_t, ui.tip, ui.tip_desc, ui.hover_seen = saved_id, saved_t, saved_tip, false, false
+	}
 
 	// a group of operations: its hotkey runs the operation last used from it on the selection
 	tool_groups_default()
@@ -329,6 +628,11 @@ tool_groups_selftest :: proc(t: ^Test_Run) {
 	check(t, !path_op_enabled(op), "union is disabled with nothing selected")
 	group_run_op(pg, .Break_Apart)
 	check(t, tool_groups[pg].last_op == .Break_Apart, "running an operation makes it the group's last")
+	close_op, _ := path_op(.Toggle_Close_Paths)
+	check(t, path_op_enabled(close_op), "Close Open Paths works with any selection")
+	group_run_op(pg, .Toggle_Close_Paths)
+	check(t, close_open_paths && tool_groups[pg].last_op == .Break_Apart, "the toggle is not remembered for the group's hotkey")
+	group_run_op(pg, .Toggle_Close_Paths)
 
 	tool_groups_default()
 	set_tool(.Select)

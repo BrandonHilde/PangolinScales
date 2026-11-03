@@ -20,7 +20,7 @@ width_style :: proc(w: i32) -> string {
 }
 
 // Slider with the value inside it, like `slider`.
-oslider :: proc(label: string, w: i32, v: ^int, lo, hi: int, tip := "", suffix := "", curve: f32 = 1, div := 1, key := "", class := "", id := "") -> bool {
+oslider :: proc(label: string, w: i32, v: ^int, lo, hi: int, tip: Tip, suffix := "", curve: f32 = 1, div := 1, key := "", class := "", id := "") -> bool {
 	k := key != "" ? key : fmt.tprintf("s:%s", label)
 	n := oui.element(uictx, k, "slider-bar", {id = id, class = class, style = width_style(w), interactive = true})
 	defer oui.end(uictx)
@@ -59,7 +59,7 @@ oslider :: proc(label: string, w: i32, v: ^int, lo, hi: int, tip := "", suffix :
 }
 
 // Text button; `highlight` shows it toggled on.
-obutton :: proc(label: string, w: i32 = 0, tip := "", enabled := true, highlight := false, key := "", class := "", id := "") -> bool {
+obutton :: proc(label: string, w: i32, tip: Tip, enabled := true, highlight := false, key := "", class := "", id := "") -> bool {
 	k := key != "" ? key : fmt.tprintf("b:%s", label)
 	n := oui.button_begin(uictx, k, {id = id, class = class == "" ? "btn" : fmt.tprintf("btn %s", class), style = width_style(w), checked = highlight, disabled = !enabled})
 	oui.label(uictx, "t", label)
@@ -71,7 +71,7 @@ obutton :: proc(label: string, w: i32 = 0, tip := "", enabled := true, highlight
 
 // Drop-down selector, like `combo`: returns the picked index (one frame after the click); the
 // wheel or up / down while hovered steps through the items.
-ocombo :: proc(key: string, w: i32, items: []string, cur: int, tip := "", id := "") -> (new_val: int, changed: bool) {
+ocombo :: proc(key: string, w: i32, items: []string, cur: int, tip: Tip, id := "") -> (new_val: int, changed: bool) {
 	nid := make_id({}, key) // popup owner
 	is_open := popup.open && popup.owner == nid
 	n := oui.button_begin(uictx, key, {id = id, class = is_open ? "combo open" : "combo", style = width_style(w)})
@@ -101,12 +101,12 @@ ocombo :: proc(key: string, w: i32, items: []string, cur: int, tip := "", id := 
 	if n.clicked {
 		r := oui_rect(n)
 		popup_begin(nid, r, r.w)
-		for it, i in items do popup_item(it, i, checked = i == cur)
+		for it, i in items do popup_item(it, i, checked = i == cur, tip = tip.desc)
 	}
 	return
 }
 
-ocombo_enum :: proc(key: string, w: i32, names: [$E]string, v: ^E, tip := "") -> bool {
+ocombo_enum :: proc(key: string, w: i32, names: [$E]string, v: ^E, tip: Tip) -> bool {
 	items: [len(E)]string
 	for nm, i in names do items[i] = nm
 	nv, ch := ocombo(key, w, items[:], int(v^), tip)
@@ -115,7 +115,7 @@ ocombo_enum :: proc(key: string, w: i32, names: [$E]string, v: ^E, tip := "") ->
 }
 
 // Checkbox with its label; clicking either toggles it.
-ocheck :: proc(label: string, v: ^bool, tip := "", key := "") -> bool {
+ocheck :: proc(label: string, v: ^bool, tip: Tip, key := "") -> bool {
 	k := key != "" ? key : fmt.tprintf("c:%s", label)
 	n := oui.button_begin(uictx, k, {class = "check", checked = v^})
 	oui.element(uictx, "box", "check-box", {checked = v^})
@@ -137,17 +137,17 @@ ohint :: proc(s: string, key := "hint") {
 }
 
 // A plain label.
-otext :: proc(key, s: string, class := "") {
-	oui.label(uictx, key, s, {class = class})
+otext :: proc(key, s: string, class := "", tip := Tip{}) {
+	oui_tip(oui.label(uictx, key, s, {class = class}), tip)
 }
 
 // An icon on its own (not a button), coloured by `class` in the theme.
-oicon :: proc(key: string, ic: Icon, class := "") {
-	oui.label(uictx, key, icon_text(ic), {class = class == "" ? "icon" : fmt.tprintf("icon %s", class)})
+oicon :: proc(key: string, ic: Icon, class := "", tip := Tip{}) {
+	oui_tip(oui.label(uictx, key, icon_text(ic), {class = class == "" ? "icon" : fmt.tprintf("icon %s", class)}), tip)
 }
 
 // A colour chip button showing `c`.
-oswatch_button :: proc(key: string, c: Color, tip := "", w: i32 = 0) -> bool {
+oswatch_button :: proc(key: string, c: Color, tip: Tip, w: i32 = 0) -> bool {
 	n := oui.button_begin(uictx, key, {class = "swatch-btn", style = fmt.tprintf("background:#%02x%02x%02x;%s", c.r, c.g, c.b, width_style(w))})
 	oui.end(uictx)
 	oui_tip(n, tip)

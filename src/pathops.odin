@@ -60,10 +60,63 @@ replace_nodes :: proc(d: ^Doc, old: []^Node, result: ^Node) {
 	sel_set(d, result)
 }
 
+// Paths stay open unless this is on. It lets freehand strokes close when they end near their start, and lets
+// booleans and offset run on open paths, which they treat as closed by joining the ends with a straight line.
+close_open_paths := false
+
+// True if a subpath has no Close and ends away from its start. A Move with nothing after it does not count.
+path_has_open_subpath :: proc(segs: []Seg) -> bool {
+	start, cur: Vec2
+	drawn := false
+	for g in segs {
+		#partial switch g.kind {
+		case .Move:
+			if drawn && cur != start do return true
+			start, cur = g.p, g.p
+			drawn = false
+		case .Close:
+			cur = start
+			drawn = false
+		case:
+			cur = g.p
+			drawn = true
+		}
+	}
+	return drawn && cur != start
+}
+
+// True for a node the boolean operations cannot use as a shape: its geometry encloses nothing, like a straight
+// line, or it has an open path while Close Open Paths is off.
+node_is_line :: proc(d: ^Doc, n: ^Node) -> bool {
+	segs := make(Path, context.temp_allocator)
+	node_world_segs(d, n, &segs)
+	if len(segs) == 0 do return false
+	if !close_open_paths && path_has_open_subpath(segs[:]) do return true
+	filled := path_remove_overlap(segs[:])
+	defer delete(filled)
+	return len(filled) == 0
+}
+
 cmd_bool :: proc(d: ^Doc, op: Bool_Op) {
 	nodes := sel_nodes(d)
 	if len(nodes) < 2 {
 		set_status("Select two or more objects")
+		return
+	}
+	// The boolean closes every subpath, which would erase a line and add a straight edge to an open path. Union
+	// merges such objects into one path; anything else that involves them is refused.
+	lines := 0
+	for n in nodes do if node_is_line(d, n) do lines += 1
+	if lines == len(nodes) && op == .Union {
+		cmd_combine(d)
+		return
+	}
+	if lines > 0 {
+		if close_open_paths {
+			set_status("Lines have no area: try Stroke to Path")
+		} else {
+			set_status("Open path: turn on Close Open Paths")
+		}
 		return
 	}
 	history_push(d)
@@ -189,6 +242,18 @@ offset_path :: proc(segs: []Seg, dist: f32) -> Path {
 cmd_offset :: proc(d: ^Doc, dir: f32) {
 	nodes := sel_nodes(d)
 	if len(nodes) == 0 do return
+	// offset treats every subpath as closed, which would add a straight edge to an open path
+	if !close_open_paths {
+		for n in nodes {
+			if n.kind == .Group do continue
+			segs := make(Path, context.temp_allocator)
+			node_world_segs(d, n, &segs)
+			if path_has_open_subpath(segs[:]) {
+				set_status("Open path: turn on Close Open Paths")
+				return
+			}
+		}
+	}
 	history_push(d)
 	amount := dir * max(5 / d.zoom, 1)
 	if cur_sw > 0 do amount = dir * cur_sw

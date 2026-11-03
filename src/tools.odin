@@ -10,6 +10,7 @@ import "core:math"
 Tool :: enum {
 	Select,
 	Node,
+	Control,
 	Pen,
 	Freehand,
 	Rect,
@@ -24,6 +25,7 @@ Tool :: enum {
 TOOL_NAMES := [Tool]string {
 	.Select   = "Select (V)",
 	.Node     = "Node Edit (A)",
+	.Control  = "Control Points (B)",
 	.Pen      = "Pen (P)",
 	.Freehand = "Freehand (F)",
 	.Rect     = "Rectangle (R)",
@@ -38,6 +40,7 @@ TOOL_NAMES := [Tool]string {
 TOOL_ICONS := [Tool]Icon {
 	.Select   = .Pointer,
 	.Node     = .Node_Edit,
+	.Control  = .Control_Points,
 	.Pen      = .Pencil,
 	.Freehand = .Brush,
 	.Rect     = .Rect,
@@ -106,6 +109,10 @@ Tool_State :: struct {
 	anchors:     [dynamic]int, // selected segment indices of the edited path
 	hs:          Handle_Ref, // dragged handle
 	edit_uid:    u32,
+	// control point tool
+	ctrl_sel:    Handle_Ref, // selected control point, if ctrl_on
+	ctrl_on:     bool,
+	ctrl_cycle:  bool, // a click without a drag steps to the next overlapping control point
 	// text
 	text_uid:    u32,
 }
@@ -125,12 +132,22 @@ tools_cancel :: proc() {
 	pen_finish(false)
 	text_finish()
 	tl.edit_uid = 0
+	tl.ctrl_on = false
 	clear(&tl.anchors)
 }
 
 set_tool :: proc(t: Tool) {
-	if t != cur_tool do tools_cancel()
+	if t != cur_tool {
+		// the two point editing tools work on the same path
+		keep := is_point_tool(t) && is_point_tool(cur_tool) ? tl.edit_uid : 0
+		tools_cancel()
+		tl.edit_uid = keep
+	}
 	cur_tool = t
+}
+
+is_point_tool :: proc(t: Tool) -> bool {
+	return t == .Node || t == .Control
 }
 
 push_once :: proc(d: ^Doc) {
@@ -325,6 +342,8 @@ tools_input :: proc(d: ^Doc, vp: Rect, over: bool, sp: Vec2) {
 		tool_select(d, p, sp, pressed, over)
 	case .Node:
 		tool_node(d, p, sp, pressed, over)
+	case .Control:
+		tool_control(d, p, sp, pressed, over)
 	case .Pen:
 		tool_pen(d, p, sp, pressed, over)
 	case .Freehand:
@@ -603,6 +622,7 @@ draw_handle_sq :: proc(c: Vec2, filled: bool, col: Color) {
 }
 
 draw_handle_dot :: proc(c: Vec2, col: Color) {
+	draw_rrect(c.x - 4, c.y - 4, 9, 9, 4.5, Color{20, 22, 28, 255}) // keeps it visible on any background
 	draw_rrect(c.x - 3, c.y - 3, 7, 7, 3.5, col)
 }
 
@@ -624,7 +644,7 @@ overlay_draw :: proc(vp: Rect) {
 		}
 	}
 	// selection
-	if cur_tool != .Node && cur_tool != .Pen {
+	if !is_point_tool(cur_tool) && cur_tool != .Pen {
 		nodes := sel_nodes(d)
 		for n in nodes {
 			b := node_doc_bounds(d, n)
@@ -656,7 +676,7 @@ overlay_draw :: proc(vp: Rect) {
 			draw_handle_dot(b, Color{255, 255, 255, 255})
 		}
 	}
-	if cur_tool == .Node do node_overlay(d)
+	if is_point_tool(cur_tool) do node_overlay(d)
 	if cur_tool == .Pen do pen_overlay(d)
 	if tl.kind == .Freehand {
 		for i in 1 ..< len(tl.free_pts) {

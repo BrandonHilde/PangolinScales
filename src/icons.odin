@@ -77,6 +77,8 @@ Icon :: enum {
 	To_Path,
 	Stroke_Path,
 	Pointer,
+	Close_Paths,
+	Control_Points,
 }
 
 ICON_SVG := [Icon]string {
@@ -149,6 +151,8 @@ ICON_SVG := [Icon]string {
 	.To_Path = #load("../assets/icons/to_path.svg", string),
 	.Stroke_Path = #load("../assets/icons/stroke_path.svg", string),
 	.Pointer = #load("../assets/icons/pointer.svg", string),
+	.Close_Paths = #load("../assets/icons/close_paths.svg", string),
+	.Control_Points = #load("../assets/icons/control_points.svg", string),
 }
 
 @(private = "file")

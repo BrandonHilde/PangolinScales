@@ -29,17 +29,21 @@ The fill / stroke chips below the groups show the selection's paints (or those n
 Properties.
 
 ## SVG editing
-- **Tools**: select (move, scale, rotate), node edit, pen (click, click-drag for curves, click the first point to close), freehand
+- **Tools**: select (move, scale, rotate), node edit, pen (click for a straight line, drag for a curve; click the first point to close straight, drag it to close with a curve), freehand
   (fits smooth Bezier curves to your stroke), rectangle, ellipse, line, text, eyedropper, hand, zoom.
 - **Nodes**: drag anchors and handles (handles mirror when a node is smooth, Alt breaks the symmetry), double click a segment to add a
-  node, make nodes smooth or corner, delete nodes, move with the arrow keys.
+  node, make nodes smooth or corner, delete nodes, move with the arrow keys. The **control points** tool (B) picks control points
+  only, including ones lying on their anchor: where several overlap, click to step through them, then drag or use the arrow keys.
 - **Style**: fill and stroke as none, solid, linear or radial gradient (stops, spread, draggable gradient handles on the canvas),
   stroke width, caps, joins, dashes, opacity, even-odd fill, corner radius, exact X / Y / W / H.
 - **Objects**: group / ungroup, z-order, lock and hide, duplicate, copy / paste (also as SVG text with other apps), flip, rotate 90,
   align and distribute, an objects panel (drag rows to reorder objects or move them in and out of groups; drop beside the
   list to cancel).
 - **Path menu**: union, subtract, intersect, exclude, combine, break apart, reverse, simplify, offset in and out, stroke to path,
-  object to path, text to outlines. Booleans keep untouched curves exact.
+  object to path, text to outlines. Booleans keep untouched curves exact. Paths stay open unless you close them with the pen or
+  turn on **Close Open Paths**, which lets freehand strokes close when they end near their start, and lets booleans and offset
+  join the ends of open paths with a straight line. While it is off, union merges open paths into one path without closing
+  them, and offset or any other boolean involving an open path is refused.
 - **Text** with the bundled fonts and every installed TTF / OTF (the font button opens a searchable list; size is a slider).
   With the text tool, click a text object to edit it or drag it to move it. Text stays live until converted to outlines.
 - **Grid**, snap to grid, a tracing image under or over the drawing, unlimited undo (100 steps).
@@ -68,7 +72,7 @@ Properties.
 |-|-|
 | 1 - 5 | tool groups (press again to cycle) |
 | Tab | canvas mode |
-| V / A / P / F | select / node edit / pen / freehand |
+| V / A / B / P / F | select / node edit / control points / pen / freehand |
 | R / E / L / T / I | rectangle / ellipse / line / text / eyedropper |
 | H, Space (hold), middle drag / wheel | pan / zoom |
 | Ctrl+0 / Ctrl+1 | fit page / actual size |
@@ -104,6 +108,7 @@ behave like a font in CSS (`font-family: icons`), so `color` and `font-size` sty
 `--selftest` (tests), `--demo` (sample drawing), `--shot file.png` (screenshot after a few frames), `--size WxH`, `--scale N`,
 `--render in.svg out.png [scale]` (headless SVG to PNG), `--icon-sheet out.png` (every icon at several sizes),
 `--clicks "frame:x,y;..."` (left clicks at window pixels on those frames, for checking the interface with `--shot`),
+`--hover "frame:x,y"` (rests the pointer there from that frame on, for checking tooltips with `--shot` and a later `--shot-frame`),
 `--menu N` (opens menu N).
 
 ## Source layout

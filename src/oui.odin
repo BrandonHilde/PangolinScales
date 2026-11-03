@@ -156,8 +156,8 @@ oui_rect :: proc(n: ^oui.Node) -> Rect {
 }
 
 // Our tooltip for a node under the pointer.
-oui_tip :: proc(n: ^oui.Node, tip: string) {
-	if n != nil && n.hovered && tip != "" {
+oui_tip :: proc(n: ^oui.Node, tip: Tip) {
+	if n != nil && n.hovered && tip.title != "" {
 		tooltip_hover(u32(uintptr(n)) | 1, tip)
 	}
 }
@@ -171,7 +171,7 @@ Icon_Button_Opts :: struct {
 }
 
 // A button showing one icon. Returns whether it was clicked.
-oui_icon_button :: proc(key: string, ic: Icon, tip := "", opts := Icon_Button_Opts{enabled = true}) -> (clicked: bool, n: ^oui.Node) {
+oui_icon_button :: proc(key: string, ic: Icon, tip: Tip, opts := Icon_Button_Opts{enabled = true}) -> (clicked: bool, n: ^oui.Node) {
 	class := opts.class == "" ? "icon-btn" : fmt.tprintf("icon-btn %s", opts.class)
 	n = oui.button_begin(uictx, key, {id = opts.id, class = class, checked = opts.lit, disabled = !opts.enabled})
 	oui.label(uictx, "icon", icon_text(ic), {class = opts.icon_lg ? "icon lg" : "icon"})

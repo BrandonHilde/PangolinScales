@@ -42,6 +42,7 @@ PATH_OPS := [?]Path_Op {
 	{.Offset_In, .Offset_In, "Offset Inward", 1},
 	{.Object_To_Path, .To_Path, "Object to Path", 1},
 	{.Stroke_To_Path, .Stroke_Path, "Stroke to Path", 1},
+	{.Toggle_Close_Paths, .Close_Paths, "Close Open Paths", 0},
 }
 
 path_op :: proc(c: Cmd) -> (Path_Op, bool) {
@@ -59,9 +60,9 @@ path_op_enabled :: proc(op: Path_Op) -> bool {
 	return doc != nil && len(doc.sel) >= op.min_sel
 }
 
-// Runs a group's operation and remembers it for the group's hotkey.
+// Runs a group's operation and remembers it for the group's hotkey (a setting's toggle is not remembered).
 group_run_op :: proc(gi: int, c: Cmd) {
-	tool_groups[gi].last_op = c
+	if c != .Toggle_Close_Paths do tool_groups[gi].last_op = c
 	run_cmd(c)
 }
 
@@ -133,7 +134,7 @@ tool_groups_default :: proc() {
 		append(&g.tools, ..tools)
 		append(&tool_groups, g)
 	}
-	add("Select", .ONE, .Select, .Node)
+	add("Select", .ONE, .Select, .Node, .Control)
 	add("Draw", .TWO, .Pen, .Freehand, .Line)
 	add("Shapes", .THREE, .Rect, .Ellipse)
 	add("Text", .FOUR, .Text, .Picker)
@@ -143,7 +144,7 @@ tool_groups_default :: proc() {
 		name    = make_name("Path"),
 		last_op = .Union,
 	}
-	append(&path.ops, Cmd.Union, Cmd.Subtract, Cmd.Intersect, Cmd.Exclude, Cmd.Combine, Cmd.Break_Apart)
+	append(&path.ops, Cmd.Union, Cmd.Subtract, Cmd.Intersect, Cmd.Exclude, Cmd.Combine, Cmd.Break_Apart, Cmd.Toggle_Close_Paths)
 	append(&tool_groups, path)
 }
 
@@ -293,7 +294,7 @@ panel_groups_bar :: proc(r: Rect) {
 	hline(r.x, r.y, r.w, C_BORDER)
 	ty := r.y + (r.h - FONT_CAP) / 2
 	x := r.x + 10
-	text(x, ty, "Groups:", C_TEXT_DIM)
+	tip_text(x, ty, "Groups:", C_TEXT_DIM, {"Tool groups", "Each one shows its hotkey and the tool it will pick. Press Tab to bring the full interface back."})
 	x += text_w("Groups:") + 10
 	limit := r.x + r.w - 10
 	if status_t > 0 {
@@ -321,7 +322,7 @@ panel_groups_bar :: proc(r: Rect) {
 		cw := 8 + label_w + 6 + text_w(ARROW) + 6 + 18 + 8
 		if x + cw > limit do break
 		cell := Rect{x, r.y + 3, cw, r.h - 6}
-		tip := key == "" ? title : fmt.tprintf("%s (%s)", title, key)
+		tip := key == "" ? Tip{title, "Click to use this group's tool, or to repeat its last operation."} : Tip{fmt.tprintf("%s (%s)", title, key), "Click or press the key to use this group's tool, or to repeat its last operation. Again steps to its next tool."}
 		clicked, _, hover := button_behavior(make_id(cell, "grpcell"), cell, tip)
 		if active {
 			draw_rrect(f32(cell.x), f32(cell.y), f32(cell.w), f32(cell.h), RADIUS, C_ACCENT_TINT)
@@ -351,9 +352,9 @@ dlg_group_rename :: proc() {
 		dialog_close()
 		return
 	}
-	text(c.x, c.y + 3, "Name", C_TEXT)
-	text_field(Rect{c.x + 50, c.y, c.w - 50, 14}, &dialog.name, "Leave empty for the default name")
-	ok, cancel := dialog_buttons(c)
+	tip_text(c.x, c.y + 3, "Name", C_TEXT, {"Group name", "The name shown above this tool group."})
+	text_field(Rect{c.x + 50, c.y, c.w - 50, 14}, &dialog.name, {"Group name", "The name shown above this tool group. Leave it empty for the default name, \"Group\"."})
+	ok, cancel := dialog_buttons(c, "Use this name for the group (Enter).")
 	if cancel {
 		dialog_close()
 	}

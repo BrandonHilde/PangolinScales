@@ -12,8 +12,8 @@ import oui "odinui:odinui"
 // ---------------------------------------------------------------------------
 
 // Section heading: a dim caption with a hairline running to the right edge.
-osection :: proc(key, title: string) {
-	oui.element(uictx, key, "section-head")
+osection :: proc(key, title, tip: string) {
+	oui_tip(oui.element(uictx, key, "section-head"), {title, tip})
 	oui.label(uictx, "t", title)
 	oui.element_leaf(uictx, "line", "section-line")
 	oui.end(uictx)
@@ -25,21 +25,21 @@ prop_scroll: i32
 panel_right :: proc() {
 	oui.element(uictx, "right", "sidepanel", {id = "right"})
 	defer oui.end(uictx)
-	osection("objects-head", "Objects")
+	osection("objects-head", "Objects", "Everything in this document, frontmost at the top. Drag rows to change the stacking order or to move objects in and out of groups.")
 	oui_slot("objects", "objects")
 	oui.element(uictx, "object-buttons", "row", {id = "object-buttons"})
-	ob :: proc(key: string, ic: Icon, tip: string, c: Cmd) {
-		if clicked, _ := oui_icon_button(key, ic, tip, {class = "panel-btn", enabled = true}); clicked do run_cmd(c)
+	ob :: proc(key: string, ic: Icon, name: string, c: Cmd) {
+		if clicked, _ := oui_icon_button(key, ic, cmd_tip(name, c), {class = "panel-btn", enabled = true}); clicked do run_cmd(c)
 	}
-	ob("raise", .Up, "Raise (PgUp)", .Raise)
-	ob("lower", .Down, "Lower (PgDn)", .Lower)
-	ob("dup", .Copy, "Duplicate (Ctrl+D)", .Duplicate)
-	ob("group", .Layer, "Group (Ctrl+G)", .Group)
-	ob("del", .Trash, "Delete (Del)", .Delete)
+	ob("raise", .Up, "Raise", .Raise)
+	ob("lower", .Down, "Lower", .Lower)
+	ob("dup", .Copy, "Duplicate", .Duplicate)
+	ob("group", .Layer, "Group", .Group)
+	ob("del", .Trash, "Delete", .Delete)
 	oui.element_leaf(uictx, "spacer", "spacer")
-	otext("count", fmt.tprintf("%d objects", len(doc.root.children)), "dim")
+	otext("count", fmt.tprintf("%d objects", len(doc.root.children)), "dim", {"Object count", "How many objects are at the top level of this document. Objects inside a group are not counted."})
 	oui.end(uictx)
-	osection("props-head", "Properties")
+	osection("props-head", "Properties", "The look and position of the selected objects. With nothing selected, the colours and stroke settings apply to new shapes.")
 	oui_slot("properties", "properties")
 }
 
@@ -63,6 +63,7 @@ panel_objects :: proc(area: Rect) {
 	rows := make([dynamic]Obj_Row, context.temp_allocator)
 	flatten_tree(d.root, 0, &rows)
 	ctl_well(area)
+	tip_area(area, "objects", {"Objects", "Everything in this document, frontmost at the top. Scroll with the mouse wheel."})
 	r := rect_inset(area, 1)
 
 	ROW :: 16
@@ -110,12 +111,13 @@ panel_objects :: proc(area: Rect) {
 		if selected do fill_rect(rr, with_alpha(C_ACTIVE, 120))
 		else if hover do fill_rect(rr, C_HOVER)
 		x := r.x + 4
-		if icon_button(Rect{x, y + 1, 14, 14}, .Eye, "Show / hide", n.visible) {
+		tip_area(rr, "object-row", {name_str(&n.name), "Click to select this object, Shift-click to add it to the selection or take it out. Drag to change its stacking order or move it in or out of a group. Drop beside the list to cancel."})
+		if icon_button(Rect{x, y + 1, 14, 14}, .Eye, {"Show or hide", "Hidden objects stay in the document but are not drawn or picked."}, n.visible) {
 			history_push(d)
 			n.visible = !n.visible
 			doc_changed(d)
 		}
-		if icon_button(Rect{x + 15, y + 1, 14, 14}, .Lock, "Lock / unlock", n.locked) {
+		if icon_button(Rect{x + 15, y + 1, 14, 14}, .Lock, {"Lock or unlock", "A locked object can't be picked on the canvas, so it won't be moved by accident."}, n.locked) {
 			history_push(d)
 			n.locked = !n.locked
 			doc_changed(d)
@@ -211,6 +213,7 @@ color_edit :: proc(x, w: i32, y: ^i32, col: ^Color, alpha: bool) -> bool {
 	for c, i in PALETTE {
 		sr := Rect{x + i32(i) * cw, y^, cw - 1, 12}
 		fill_rect(sr, c)
+		tip_area(sr, "palette", {"Colour swatch", "Click to use this colour. The opacity stays as it is."})
 		if ui_hover(sr) {
 			outline_rect(sr, WHITE)
 			if ui.pressed[0] {
@@ -223,21 +226,21 @@ color_edit :: proc(x, w: i32, y: ^i32, col: ^Color, alpha: bool) -> bool {
 	}
 	y^ += 16
 	rv, gv, bv, av := int(col.r), int(col.g), int(col.b), int(col.a)
-	if slider(Rect{x, y^, w, 12}, &rv, 0, 255, "R", "", "") {col.r = u8(rv); changed = true}
+	if slider(Rect{x, y^, w, 12}, &rv, 0, 255, "R", {"Red", "How much red is in this colour, from 0 (none) to 255 (full). Drag, or use the mouse wheel."}) {col.r = u8(rv); changed = true}
 	y^ += 14
-	if slider(Rect{x, y^, w, 12}, &gv, 0, 255, "G", "", "") {col.g = u8(gv); changed = true}
+	if slider(Rect{x, y^, w, 12}, &gv, 0, 255, "G", {"Green", "How much green is in this colour, from 0 (none) to 255 (full). Drag, or use the mouse wheel."}) {col.g = u8(gv); changed = true}
 	y^ += 14
-	if slider(Rect{x, y^, w, 12}, &bv, 0, 255, "B", "", "") {col.b = u8(bv); changed = true}
+	if slider(Rect{x, y^, w, 12}, &bv, 0, 255, "B", {"Blue", "How much blue is in this colour, from 0 (none) to 255 (full). Drag, or use the mouse wheel."}) {col.b = u8(bv); changed = true}
 	y^ += 14
 	if alpha {
-		if slider(Rect{x, y^, w, 12}, &av, 0, 255, "A", "", "") {col.a = u8(av); changed = true}
+		if slider(Rect{x, y^, w, 12}, &av, 0, 255, "A", {"Alpha", "How solid this colour is, from 0 (see-through) to 255 (solid). Drag, or use the mouse wheel."}) {col.a = u8(av); changed = true}
 		y^ += 14
 	}
 	hr := Rect{x + 24, y^, w - 24, 14}
-	text(x, y^ + 3, "Hex", C_TEXT_DIM)
+	tip_text(x, y^ + 3, "Hex", C_TEXT_DIM, {"Hex colour", "This colour as a hex code."})
 	focused := ui.focus_id == make_id(hr, "text")
 	if !focused do name_set(&hex_buf, color_hex_string(col^))
-	if ch, _ := text_field(hr, &hex_buf, "RRGGBB or RRGGBBAA"); ch {
+	if ch, _ := text_field(hr, &hex_buf, {"Hex colour", "This colour as a hex code: RGB, RRGGBB, or RRGGBBAA to include alpha. Type or paste one here."}); ch {
 		s := name_str(&hex_buf)
 		if c, ok := parse_color(fmt.tprintf("#%s", s), col^); ok && (len(s) == 6 || len(s) == 8 || len(s) == 3) {
 			if !alpha || len(s) < 8 do c.a = col.a
@@ -291,6 +294,7 @@ panel_properties :: proc(r: Rect) {
 		sw := Rect{br.x + 3, br.y + 3, 14, 12}
 		draw_paint_swatch(sw, p)
 		text(sw.x + 20, br.y + (br.h - FONT_CAP) / 2, k == 0 ? "Fill" : "Stroke", on ? WHITE : C_TEXT_DIM)
+		tip_area(br, "paint-target", k == 0 ? Tip{"Edit fill", "Edit the colour inside the object. The controls below change to match."} : Tip{"Edit stroke", "Edit the colour of the object's outline. The controls below change to match."})
 		if ui_hover(br) && ui.pressed[0] {
 			prop_target = k
 			grad_stop = 0
@@ -303,7 +307,7 @@ panel_properties :: proc(r: Rect) {
 	else do paint = prop_target == 0 ? cur_fill : cur_stroke
 
 	kinds := [?]string{"None", "Solid", "Linear gradient", "Radial gradient"}
-	if nv, ch := combo(Rect{x, y, w, 14}, kinds[:], int(paint.kind)); ch {
+	if nv, ch := combo(Rect{x, y, w, 14}, kinds[:], int(paint.kind), {"Paint type", "None: nothing is drawn. Solid: one colour. Linear gradient: colours blend along a line. Radial gradient: colours blend outwards from a centre. On the canvas, the Select tool shows a gradient's handles."}); ch {
 		np := paint
 		switch Paint_Kind(nv) {
 		case .None:
@@ -334,20 +338,20 @@ panel_properties :: proc(r: Rect) {
 	}
 
 	// stroke settings
-	text(x, y + 2, "Stroke", C_TEXT_DIM)
+	tip_text(x, y + 2, "Stroke", C_TEXT_DIM, {"Stroke settings", "How the outline is drawn. To change its colour, pick Stroke at the top of this panel."})
 	hline(x + 44, y + 7, w - 44, C_BORDER)
 	y += 16
 	wv := int(cur_sw * 10)
 	if sel != nil do wv = int(sel.sw * 10)
-	if slider(Rect{x, y, w, 14}, &wv, 0, 1000, "Width", "", "", 1, 10) do style_set_width(d, f32(wv) / 10)
+	if slider(Rect{x, y, w, 14}, &wv, 0, 1000, "Width", {"Stroke width", "Thickness of the outline in document units. Drag, or use the mouse wheel. 0 draws no outline."}, "", 1, 10) do style_set_width(d, f32(wv) / 10)
 	y += 18
 	caps := [?]string{"Butt cap", "Round cap", "Square cap"}
 	joins := [?]string{"Miter join", "Round join", "Bevel join"}
 	cv := int(sel != nil ? sel.cap : cur_cap)
 	jv := int(sel != nil ? sel.join : cur_join)
 	hw := (w - 4) / 2
-	if nv, ch := combo(Rect{x, y, hw, 14}, caps[:], cv); ch do style_set_cap(d, Cap(nv))
-	if nv, ch := combo(Rect{x + hw + 4, y, hw, 14}, joins[:], jv); ch do style_set_join(d, Join(nv))
+	if nv, ch := combo(Rect{x, y, hw, 14}, caps[:], cv, {"Line ends", "How the ends of an open path look. Butt: cut off at the end point. Round: a half circle past the end. Square: a square past the end."}); ch do style_set_cap(d, Cap(nv))
+	if nv, ch := combo(Rect{x + hw + 4, y, hw, 14}, joins[:], jv, {"Corners", "How the outline turns at corners. Miter: a sharp point. Round: rounded off. Bevel: the point is cut flat."}); ch do style_set_join(d, Join(nv))
 	y += 18
 	if sel != nil {
 		dashes := [?]string{"Solid line", "Dashed", "Dotted", "Dash-dot"}
@@ -355,7 +359,7 @@ panel_properties :: proc(r: Rect) {
 		if sel.ndash == 2 && sel.dash[1] > sel.dash[0] * 3 do dv = 2
 		else if sel.ndash == 2 do dv = 1
 		else if sel.ndash == 4 do dv = 3
-		if nv, ch := combo(Rect{x, y, hw, 14}, dashes[:], dv); ch {
+		if nv, ch := combo(Rect{x, y, hw, 14}, dashes[:], dv, {"Line pattern", "A solid line, dashes, dots, or alternating dashes and dots. The pattern is sized from the stroke width."}); ch {
 			style_push(d)
 			for n in sel_nodes(d) {
 				sw := max(n.sw, 1)
@@ -370,10 +374,10 @@ panel_properties :: proc(r: Rect) {
 			doc_changed(d)
 		}
 		ov := int(sel.opacity * 100 + 0.5)
-		if slider(Rect{x + hw + 4, y, hw, 14}, &ov, 0, 100, "Opacity", "", "%") do style_set_opacity(d, f32(ov) / 100)
+		if slider(Rect{x + hw + 4, y, hw, 14}, &ov, 0, 100, "Opacity", {"Opacity", "How solid the whole object is, fill and stroke together: 100% is solid, 0% invisible. Drag, or use the mouse wheel."}, "%") do style_set_opacity(d, f32(ov) / 100)
 		y += 18
 		check_even := sel.even_odd
-		if checkbox(x, y, "Even-odd fill", &check_even) {
+		if checkbox(x, y, "Even-odd fill", &check_even, {"Even-odd fill", "How overlapping parts of a path fill. On: areas overlapped an even number of times become holes. Off: the drawing direction decides, so overlaps usually stay filled."}) {
 			style_push(d)
 			for n in sel_nodes(d) do n.even_odd = check_even
 			doc_changed(d)
@@ -383,19 +387,25 @@ panel_properties :: proc(r: Rect) {
 
 	// transform
 	if sel != nil {
-		text(x, y + 2, "Transform", C_TEXT_DIM)
+		tip_text(x, y + 2, "Transform", C_TEXT_DIM, {"Transform", "The position and size of the selection as a whole."})
 		hline(x + 58, y + 7, w - 58, C_BORDER)
 		y += 16
 		b := sel_bounds(d)
 		if !bounds_empty(b) {
 			vals := [4]int{int(math.round(b.x0)), int(math.round(b.y0)), int(math.round(bounds_w(b))), int(math.round(bounds_h(b)))}
 			names := [4]string{"X", "Y", "W", "H"}
+			tips := [4]Tip {
+				{"X position", "Distance from the left of the page to the left edge of the selection. Type a value or use the mouse wheel."},
+				{"Y position", "Distance from the top of the page to the top edge of the selection. Type a value or use the mouse wheel."},
+				{"Width", "Width of the selection. Changing it stretches the selection from its left edge. Type a value or use the mouse wheel."},
+				{"Height", "Height of the selection. Changing it stretches the selection from its top edge. Type a value or use the mouse wheel."},
+			}
 			for i in 0 ..< 4 {
 				cx := x + i32(i % 2) * (hw + 4)
 				cy := y + i32(i / 2) * 18
-				text(cx, cy + 3, names[i], C_TEXT_DIM)
+				tip_text(cx, cy + 3, names[i], C_TEXT_DIM, tips[i])
 				nv := vals[i]
-				if field_int(Rect{cx + 14, cy, hw - 14, 14}, &nv, -100000, 100000) && nv != vals[i] {
+				if field_int(Rect{cx + 14, cy, hw - 14, 14}, &nv, -100000, 100000, tips[i]) && nv != vals[i] {
 					transform_to(d, b, i, f32(nv))
 				}
 			}
@@ -404,8 +414,9 @@ panel_properties :: proc(r: Rect) {
 		// object specific
 		if sel.kind == .Rect {
 			rx := int(sel.rx)
-			text(x, y + 3, "Corner radius", C_TEXT_DIM)
-			if field_int(Rect{x + 90, y, 50, 14}, &rx, 0, 10000) {
+			RADIUS_TIP :: "How rounded this rectangle's corners are, in document units. 0 makes square corners. Type a value or use the mouse wheel."
+			tip_text(x, y + 3, "Corner radius", C_TEXT_DIM, {"Corner radius", RADIUS_TIP})
+			if field_int(Rect{x + 90, y, 50, 14}, &rx, 0, 10000, {"Corner radius", RADIUS_TIP}) {
 				style_push(d)
 				for n in sel_nodes(d) do if n.kind == .Rect {
 					n.rx, n.ry = f32(rx), f32(rx)
@@ -415,19 +426,19 @@ panel_properties :: proc(r: Rect) {
 			y += 20
 		}
 		if sel.kind == .Text {
-			if button(Rect{x, y, w, 14}, sel.font.n > 0 ? name_str(&sel.font) : DEFAULT_FONT, "Font (click to choose)") {
+			if button(Rect{x, y, w, 14}, sel.font.n > 0 ? name_str(&sel.font) : DEFAULT_FONT, {"Font", "The font of this text. Click to choose from the bundled and installed fonts."}) {
 				cur_font = sel.font
 				font_pick_open()
 			}
 			y += 18
 			sz := int(sel.size + 0.5)
-			if slider(Rect{x, y, w, 14}, &sz, 1, 1000, "Size", "Text size", "px", 2) {
+			if slider(Rect{x, y, w, 14}, &sz, 1, 1000, "Size", {"Text size", "The size of this text in pixels. Drag, or use the mouse wheel. Shift steps through round values."}, "px", 2) {
 				style_push(d)
 				for n in sel_nodes(d) do if n.kind == .Text do n.size = f32(sz)
 				doc_changed(d)
 			}
 			y += 20
-			if button(Rect{x, y, w, 16}, "Convert to outlines") do run_cmd(.Text_To_Outlines)
+			if button(Rect{x, y, w, 16}, "Convert to outlines", cmd_tip("Convert to outlines", .Text_To_Outlines)) do run_cmd(.Text_To_Outlines)
 			y += 22
 		}
 	}
@@ -462,10 +473,12 @@ gradient_edit :: proc(d: ^Doc, x, w: i32, y: ^i32, paint: ^Paint) {
 	// preview bar
 	bar := Rect{x, y^, w, 14}
 	draw_paint_swatch(bar, Paint{kind = .Linear, nstops = paint.nstops, stops = paint.stops})
+	tip_area(bar, "gradient-bar", {"Gradient preview", "How this gradient looks. The markers below it are its colour stops."})
 	for i in 0 ..< paint.nstops {
 		mx := bar.x + i32(paint.stops[i].t * f32(bar.w - 1))
 		mr := Rect{mx - 3, bar.y + bar.h - 2, 7, 8}
 		fill_rect(mr, i == grad_stop ? WHITE : C_TEXT_DIM)
+		tip_area(mr, "gradient-stop", {"Colour stop", "Click to select it, then edit its position and colour below."})
 		if ui_hover(mr) && ui.pressed[0] do grad_stop = i
 	}
 	y^ += 24
@@ -474,13 +487,13 @@ gradient_edit :: proc(d: ^Doc, x, w: i32, y: ^i32, paint: ^Paint) {
 	if paint.nstops > 0 {
 		tv := int(paint.stops[grad_stop].t * 100 + 0.5)
 		hw := (w - 4) / 2
-		if slider(Rect{x, y^, hw, 14}, &tv, 0, 100, "Stop", "", "%") {
+		if slider(Rect{x, y^, hw, 14}, &tv, 0, 100, "Stop", {"Stop position", "Where the selected colour stop sits along the gradient. It can't pass the stops on either side. Drag, or use the mouse wheel."}, "%") {
 			lo := grad_stop > 0 ? paint.stops[grad_stop - 1].t : 0
 			hi := grad_stop < paint.nstops - 1 ? paint.stops[grad_stop + 1].t : 1
 			np.stops[grad_stop].t = clamp(f32(tv) / 100, lo, hi)
 			changed = true
 		}
-		if button(Rect{x + hw + 4, y^, hw / 2 - 2, 14}, "+ Stop", "Add a stop") && paint.nstops < MAX_STOPS {
+		if button(Rect{x + hw + 4, y^, hw / 2 - 2, 14}, "+ Stop", {"Add stop", "Add a colour stop next to the selected one, halfway to its neighbour and with the blended colour."}) && paint.nstops < MAX_STOPS {
 			i := grad_stop
 			j := min(i + 1, paint.nstops - 1)
 			if j == i do i = max(i - 1, 0)
@@ -493,7 +506,7 @@ gradient_edit :: proc(d: ^Doc, x, w: i32, y: ^i32, paint: ^Paint) {
 			grad_stop = pos
 			changed = true
 		}
-		if button(Rect{x + hw + 4 + hw / 2 + 2, y^, hw / 2 - 2, 14}, "- Stop", "Remove the stop") && paint.nstops > 2 {
+		if button(Rect{x + hw + 4 + hw / 2 + 2, y^, hw / 2 - 2, 14}, "- Stop", {"Remove stop", "Remove the selected colour stop. A gradient always keeps at least two."}) && paint.nstops > 2 {
 			for k in grad_stop ..< np.nstops - 1 do np.stops[k] = np.stops[k + 1]
 			np.nstops -= 1
 			grad_stop = clamp(grad_stop, 0, np.nstops - 1)
@@ -506,11 +519,11 @@ gradient_edit :: proc(d: ^Doc, x, w: i32, y: ^i32, paint: ^Paint) {
 			changed = true
 		}
 		spreads := [?]string{"Pad", "Reflect", "Repeat"}
-		if nv, ch := combo(Rect{x, y^, (w - 4) / 2, 14}, spreads[:], int(paint.spread)); ch {
+		if nv, ch := combo(Rect{x, y^, (w - 4) / 2, 14}, spreads[:], int(paint.spread), {"Spread", "What happens past the ends of the gradient. Pad: the end colours carry on. Reflect: it repeats, mirrored each time. Repeat: it starts over."}); ch {
 			np.spread = u8(nv)
 			changed = true
 		}
-		if button(Rect{x + (w - 4) / 2 + 4, y^, (w - 4) / 2, 14}, "Fit to object") {
+		if button(Rect{x + (w - 4) / 2 + 4, y^, (w - 4) / 2, 14}, "Fit to object", {"Fit to object", "Reset the gradient's position so it spans the selected object. Its colours are kept."}) {
 			sel := first_selected(d)
 			if sel != nil {
 				b := node_local_bounds(sel)

@@ -62,6 +62,7 @@ Cmd :: enum {
 	Toggle_Grid,
 	Toggle_Snap,
 	Toggle_Canvas_Mode,
+	Toggle_Close_Paths,
 	Reset_Tool_Groups,
 	Page_Size,
 	Fit_Page_To_Content,
@@ -239,6 +240,9 @@ run_cmd :: proc(c: Cmd) {
 		snap_grid = !snap_grid
 	case .Toggle_Canvas_Mode:
 		canvas_mode = !canvas_mode
+	case .Toggle_Close_Paths:
+		close_open_paths = !close_open_paths
+		set_status(close_open_paths ? "Open paths can now be closed" : "Open paths now stay open")
 	case .Reset_Tool_Groups:
 		tool_groups_default()
 		set_status("Tool groups reset")

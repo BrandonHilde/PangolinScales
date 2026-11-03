@@ -1,5 +1,6 @@
 package pangolin
 
+import "core:fmt"
 import "core:strings"
 import "core:unicode/utf8"
 import stbtt "vendor:stb/truetype"
@@ -240,9 +241,9 @@ text_size_set :: proc(size: f32) {
 
 // Text tool options: the font as a button that opens the chooser, the size as a slider.
 options_text :: proc() {
-	if obutton(cur_font_name(), 120, "Font (click to choose)", key = "font", class = "font-btn") do font_pick_open()
+	if obutton(cur_font_name(), 120, {"Font", "The font of the text you are editing, or of new text. Click to choose from the bundled and installed fonts."}, key = "font", class = "font-btn") do font_pick_open()
 	sz := int(cur_text_size + 0.5)
-	if oslider("Size", 100, &sz, 1, 1000, "Text size", "px", 2) do text_size_set(f32(sz))
+	if oslider("Size", 100, &sz, 1, 1000, {"Text size", "The size of the text you are editing, or of new text, in pixels. Drag, or use the mouse wheel. Shift steps through round values."}, "px", 2) do text_size_set(f32(sz))
 	ohint(tl.text_uid != 0 ? "Type to edit. Ctrl+Enter or a click outside finishes. Drag the text to move it" : "Click to place text, click a text object to edit it, drag one to move it")
 }
 
@@ -265,10 +266,11 @@ font_pick_open :: proc() {
 dlg_font :: proc() {
 	fonts_scan()
 	c := dialog_frame("Choose Font", 320, 330)
-	text(c.x, c.y + 3, "Search", C_TEXT)
-	text_field({c.x + 50, c.y, c.w - 50, 14}, &font_filter)
+	tip_text(c.x, c.y + 3, "Search", C_TEXT, {"Search fonts", "Type part of a font's name to narrow the list."})
+	text_field({c.x + 50, c.y, c.w - 50, 14}, &font_filter, {"Search fonts", "Type part of a font's name to narrow the list."})
 	list := Rect{c.x, c.y + 22, c.w, c.h - 22 - 24}
 	ctl_well(list)
+	tip_area(list, "font-list", {"Fonts", "The bundled fonts and every font installed on this computer. Click one to use it."})
 	ROW :: 16
 	flt := strings.to_lower(name_str(&font_filter), context.temp_allocator)
 	idx := make([dynamic]int, context.temp_allocator)
@@ -287,6 +289,7 @@ dlg_font :: proc() {
 		if ry + ROW < inner.y || ry > inner.y + inner.h do continue
 		rr := Rect{inner.x, ry, inner.w, ROW}
 		hover := ui_hover(rr) && ui_hover(list)
+		if hover do tip_area(rr, "font-row", {f.name, "Click to use this font."})
 		if f.name == cur {
 			fill_rect(rr, C_ACCENT_TINT)
 		} else if hover {
@@ -302,7 +305,7 @@ dlg_font :: proc() {
 		dialog_close()
 		return
 	}
-	if button_primary({c.x + c.w - 64, c.y + c.h - 18, 64, 18}, "Close") || (IsKeyPressed(.ESCAPE) && ui.focus_id == 0) {
+	if button_primary({c.x + c.w - 64, c.y + c.h - 18, 64, 18}, "Close", {"Close", "Close this list and keep the current font (Esc)."}) || (IsKeyPressed(.ESCAPE) && ui.focus_id == 0) {
 		dialog_close()
 	}
 }

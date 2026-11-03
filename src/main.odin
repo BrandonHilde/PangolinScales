@@ -30,6 +30,7 @@ main :: proc() {
 		pos:   Vec2,
 	}
 	clicks := make([dynamic]Script_Click)
+	hover: Script_Click // moves the pointer without clicking, for checking tooltips with --shot
 	args := os.args
 	for i := 1; i < len(args); i += 1 {
 		a := args[i]
@@ -69,6 +70,18 @@ main :: proc() {
 				append(&clicks, Script_Click{f, {x, y}})
 			}
 			i += 1
+		case a == "--hover" && i + 1 < len(args):
+			// "frame:x,y": from that frame on, the pointer rests there
+			fp := strings.split(args[i + 1], ":", context.temp_allocator)
+			if len(fp) == 2 {
+				xy := strings.split(fp[1], ",", context.temp_allocator)
+				if len(xy) == 2 {
+					hover.frame, _ = strconv.parse_int(fp[0])
+					hover.pos.x, _ = strconv.parse_f32(xy[0])
+					hover.pos.y, _ = strconv.parse_f32(xy[1])
+				}
+			}
+			i += 1
 		case a == "--menu" && i + 1 < len(args):
 			menu_arg, _ = strconv.parse_int(args[i + 1])
 			i += 1
@@ -96,7 +109,7 @@ main :: proc() {
 	for i := 1; i < len(args); i += 1 {
 		a := args[i]
 		if strings.has_prefix(a, "--") {
-			if a == "--shot" || a == "--scale" || a == "--size" || a == "--shot-frame" || a == "--demo-file" || a == "--clicks" || a == "--menu" do i += 1
+			if a == "--shot" || a == "--scale" || a == "--size" || a == "--shot-frame" || a == "--demo-file" || a == "--clicks" || a == "--hover" || a == "--menu" do i += 1
 			continue
 		}
 		open_path(a)
@@ -121,6 +134,7 @@ main :: proc() {
 				gfx.m_released[0], gfx.m_down[0] = true, false
 			}
 		}
+		if hover.frame > 0 && frame_no >= hover.frame do gfx.mouse = hover.pos
 		if gfx.quit {
 			gfx.quit = false
 			want_quit = true

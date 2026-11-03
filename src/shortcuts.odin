@@ -70,6 +70,7 @@ shortcuts_update :: proc() {
 	switch {
 	case key_hit(.V): set_tool(.Select)
 	case key_hit(.A): set_tool(.Node)
+	case key_hit(.B): set_tool(.Control)
 	case key_hit(.P): set_tool(.Pen)
 	case key_hit(.F): set_tool(.Freehand)
 	case key_hit(.R): set_tool(.Rect)
@@ -97,6 +98,14 @@ shortcuts_update :: proc() {
 			tl.edit_uid = 0
 		}
 		nudge_anchors(d)
+		return
+	}
+	if cur_tool == .Control {
+		if key_hit(.ESCAPE) {
+			tl.ctrl_on = false
+			tl.edit_uid = 0
+		}
+		nudge_control(d)
 		return
 	}
 	if key_hit(.ESCAPE) {
@@ -140,6 +149,22 @@ nudge_anchors :: proc(d: ^Doc) {
 	if !ok do return
 	move_anchors(n.segs[:], tl.anchors[:], mat_apply_dir(iw, {dx, dy}))
 	doc_changed(d)
+}
+
+nudge_control :: proc(d: ^Doc) {
+	step: f32 = ui.shift ? 10 : 1
+	dx, dy: f32
+	if key_hit(.LEFT) do dx = -step
+	if key_hit(.RIGHT) do dx = step
+	if key_hit(.UP) do dy = -step
+	if key_hit(.DOWN) do dy = step
+	if dx == 0 && dy == 0 do return
+	n := edited_node(d)
+	if n == nil do return
+	if _, ok := control_selected(n); !ok do return
+	if ui.time - xf_push_t > 0.6 do history_push(d)
+	xf_push_t = ui.time
+	control_nudge(d, {dx, dy})
 }
 
 node_cmd_delete :: proc(d: ^Doc) {
