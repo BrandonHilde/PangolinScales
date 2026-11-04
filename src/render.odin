@@ -17,6 +17,7 @@ Render :: struct {
 	zoom:    f32,
 	ox, oy:  f32,
 	scale:   f32,
+	onion:   [4]int,
 	valid:   bool,
 	tmp:     Polys,
 	tmp2:    Polys,
@@ -34,16 +35,35 @@ to_doc :: proc(d: ^Doc, p: Vec2) -> Vec2 {
 }
 
 // Renders a document into an arbitrary framebuffer (also used for PNG export).
-// `view` maps document space to framebuffer pixels.
-render_doc_to :: proc(d: ^Doc, fb: []Color, w, h: int, view: Mat, r: ^Raster, with_page: bool) {
-	if with_page {
-		page := paint_solid(WHITE)
-		segs := Path{}
-		defer delete(segs)
-		path_rect(&segs, 0, 0, d.w, d.h)
-		draw_segs(r, fb, segs[:], view, &page, .Non_Zero, 1)
+// `view` maps document space to framebuffer pixels. `root` is the drawing to show, by default the live frame's.
+render_doc_to :: proc(d: ^Doc, fb: []Color, w, h: int, view: Mat, r: ^Raster, with_page: bool, root: ^Node = nil) {
+	if with_page do render_page(d, fb, view, r)
+	render_node(r, fb, root != nil ? root : d.root, view, 1)
+}
+
+render_page :: proc(d: ^Doc, fb: []Color, view: Mat, r: ^Raster) {
+	page := paint_solid(WHITE)
+	segs := Path{}
+	defer delete(segs)
+	path_rect(&segs, 0, 0, d.w, d.h)
+	draw_segs(r, fb, segs[:], view, &page, .Non_Zero, 1)
+}
+
+// The onion skin's settings, as part of what a cached render depends on. All zero when nothing would show.
+onion_key :: proc(d: ^Doc) -> [4]int {
+	if !onion || playing || len(d.frames) < 2 do return {}
+	return {1, onion_prev, onion_next, onion_alpha}
+}
+
+// The neighboring frames, nearest on top and further ones fainter. Frames past the ends don't wrap around.
+render_onion :: proc(d: ^Doc, fb: []Color, view: Mat, r: ^Raster) {
+	if onion_key(d)[0] == 0 do return
+	alpha := f32(onion_alpha) / 100
+	for k := max(onion_prev, onion_next); k >= 1; k -= 1 {
+		a := alpha / f32(k)
+		if k <= onion_prev && d.active_frame - k >= 0 do render_node(r, fb, frame_root(d, d.active_frame - k), view, a)
+		if k <= onion_next && d.active_frame + k < len(d.frames) do render_node(r, fb, frame_root(d, d.active_frame + k), view, a)
 	}
-	render_node(r, fb, d.root, view, 1)
 }
 
 draw_segs :: proc(r: ^Raster, fb: []Color, segs: []Seg, m: Mat, paint: ^Paint, rule: Fill_Rule, opacity: f32, local: Mat = MAT_ID) {
@@ -102,11 +122,12 @@ view_matrix :: proc(d: ^Doc, x, y, s: f32) -> Mat {
 
 render_viewport :: proc(d: ^Doc, vp: Rect) {
 	if vp.w <= 0 || vp.h <= 0 do return
+	fill_rect(vp, C_VIEWPORT) // around the page
 	s := ui.scale
 	// the framebuffer covers whole physical pixels, so it maps one to one onto the screen at any scale
 	x, y, lw, lh := snap_box(f32(vp.x), f32(vp.y), f32(vp.w), f32(vp.h))
 	w, h := int(math.round(lw * s)), int(math.round(lh * s))
-	same := rnd.valid && rnd.doc == d && rnd.version == d.version && rnd.zoom == d.zoom && rnd.ox == d.ox && rnd.oy == d.oy && rnd.scale == s && rnd.w == w && rnd.h == h
+	same := rnd.valid && rnd.doc == d && rnd.version == d.version && rnd.zoom == d.zoom && rnd.ox == d.ox && rnd.oy == d.oy && rnd.scale == s && rnd.w == w && rnd.h == h && rnd.onion == onion_key(d)
 	if !same {
 		if rnd.w != w || rnd.h != h {
 			raster_init(&rnd.r, w, h)
@@ -117,8 +138,12 @@ render_viewport :: proc(d: ^Doc, vp: Rect) {
 			rnd.w, rnd.h = w, h
 		}
 		for &c in rnd.fb do c = {}
-		render_doc_to(d, rnd.fb, w, h, view_matrix(d, x, y, s), &rnd.r, true)
+		view := view_matrix(d, x, y, s)
+		render_page(d, rnd.fb, view, &rnd.r)
+		render_onion(d, rnd.fb, view, &rnd.r)
+		render_node(&rnd.r, rnd.fb, d.root, view, 1)
 		tex_update(rnd.tex, rnd.fb)
+		rnd.onion = onion_key(d)
 		rnd.doc, rnd.version, rnd.zoom, rnd.ox, rnd.oy, rnd.scale, rnd.valid = d, d.version, d.zoom, d.ox, d.oy, s, true
 	}
 	draw_tex(rnd.tex, {0, 0, f32(w), f32(h)}, {x, y, lw, lh})

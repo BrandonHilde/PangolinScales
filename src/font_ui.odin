@@ -161,7 +161,7 @@ panel_glyph_grid :: proc(d: ^Doc, area: Rect) {
 			cr := Rect{r.x + 4 + i32(c) * (CELL + GAP), r.y + 2 + i32(row - f.grid_scroll) * (CELL + GAP), CELL, CELL}
 			cur := gi == f.cur
 			hover := ui_hover(cr)
-			draw_rrect(f32(cr.x), f32(cr.y), CELL, CELL, RADIUS, cur ? Color{80, 56, 40, 255} : (hover ? C_HOVER : C_PANEL_DK))
+			draw_rrect(f32(cr.x), f32(cr.y), CELL, CELL, RADIUS, cur ? C_ACCENT_TINT : (hover ? C_HOVER : C_PANEL_DK))
 			if cur do draw_rrect_outline(f32(cr.x), f32(cr.y), CELL, CELL, RADIUS, C_ACCENT)
 			tex := glyph_thumb(f, i32(gi), CELL)
 			draw_tex(tex, {0, 0, f32(tex.w), f32(tex.h)}, {f32(cr.x), f32(cr.y), CELL, CELL})
@@ -189,7 +189,10 @@ panel_font_props :: proc(d: ^Doc, r: Rect) {
 	g := font_cur(d)
 	clip_begin(r)
 	defer clip_end()
-	if ui_hover(r) && ui.wheel != 0 && ui.focus_id == 0 && !popup.open do font_prop_scroll = max(font_prop_scroll - i32(ui.wheel * 24), 0)
+	over := ui_hover(r)
+	real_mx, real_my := panel_pointer_begin(r)
+	defer panel_pointer_end(real_mx, real_my)
+	if over && ui.wheel != 0 && ui.focus_id == 0 && !popup.open do font_prop_scroll = max(font_prop_scroll - i32(ui.wheel * 24), 0)
 	x := r.x + 8
 	w := r.w - 16
 	y := r.y + 6 - font_prop_scroll

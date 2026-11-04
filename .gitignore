@@ -12,3 +12,5 @@ PangolinScales
 shots/
 *.dll
 scales.cfg
+workspaces/
+src/shared_*.odin

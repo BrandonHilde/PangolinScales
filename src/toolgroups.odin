@@ -9,8 +9,12 @@ import "core:strings"
 // The single-key tool shortcuts (V, P, R ...) keep working; a group hotkey on the same key wins.
 // Groups can also hold path operations (union, offset ...): buttons that act on the selection at once.
 // The hotkey of a group with operations but no tools runs the operation last used from it.
+// Switches (Grid, Snap, Onion Skin) sit among the tools and flip on and off.
+// A group holding colors instead is a color group: its hotkey steps the fill color, of the selection or for new
+// shapes, and leaves the tool alone.
 
 MAX_TOOL_GROUPS :: 12
+MAX_GROUP_COLORS :: 64
 
 Tool_Group :: struct {
 	key:   KeyboardKey, // KEY_NULL: no hotkey
@@ -18,6 +22,7 @@ Tool_Group :: struct {
 	last:  Tool, // last tool picked from this group
 	ops:   [dynamic]Cmd, // path operations (from PATH_OPS)
 	last_op: Cmd, // last operation run from this group
+	colors: [dynamic]Color, // a color group holds nothing else
 	name:  Name, // empty: "Group"
 }
 
@@ -83,6 +88,32 @@ tool_group_has :: proc(g: ^Tool_Group, t: Tool) -> bool {
 	return false
 }
 
+// The fill color a color group compares with: the selection's, or the one new shapes get.
+current_fill_color :: proc() -> Color {
+	sel := first_selected(doc)
+	p := sel != nil ? sel.fill : cur_fill
+	return p.kind == .Solid ? p.color : Color{}
+}
+
+group_color_is_current :: proc(c: Color) -> bool {
+	f := current_fill_color()
+	return f.a > 0 && f.r == c.r && f.g == c.g && f.b == c.b
+}
+
+// Makes `c` the fill color, of the selection or for new shapes.
+group_color_pick :: proc(c: Color) {
+	if doc == nil do return
+	style_set_fill(doc, paint_solid(Color{c.r, c.g, c.b, 255}))
+	recent_push(c)
+}
+
+group_add_colors :: proc(g: ^Tool_Group, colors: []Color) {
+	for c in colors {
+		if len(g.colors) >= MAX_GROUP_COLORS do break
+		append(&g.colors, Color{c.r, c.g, c.b, 255})
+	}
+}
+
 group_title :: proc(g: ^Tool_Group) -> string {
 	return g.name.n > 0 ? name_str(&g.name) : "Group"
 }
@@ -109,6 +140,10 @@ current_group :: proc() -> int {
 
 // Picks `t` as a member of group `gi`.
 select_tool_in_group :: proc(t: Tool, gi: int) {
+	if tool_is_toggle(t) {
+		tool_toggle(t)
+		return
+	}
 	active_group = gi
 	if gi >= 0 && gi < len(tool_groups) do tool_groups[gi].last = t
 	set_tool(t)
@@ -120,6 +155,7 @@ tool_groups_clear :: proc() {
 	for &g in tool_groups {
 		delete(g.tools)
 		delete(g.ops)
+		delete(g.colors)
 	}
 	clear(&tool_groups)
 }
@@ -135,11 +171,12 @@ tool_groups_default :: proc() {
 		append(&g.tools, ..tools)
 		append(&tool_groups, g)
 	}
+	options_switch_on = false
 	add("Select", .ONE, .Select, .Node, .Control)
 	add("Draw", .TWO, .Pen, .Freehand, .Line)
 	add("Shapes", .THREE, .Rect, .Ellipse)
 	add("Text", .FOUR, .Text, .Picker)
-	add("View", .FIVE, .Hand, .Zoom)
+	add("View", .FIVE, .Hand, .Zoom, .Grid, .Snap)
 	path := Tool_Group {
 		key     = .SIX,
 		name    = make_name("Path"),
@@ -152,10 +189,29 @@ tool_groups_default :: proc() {
 // The group's hotkey: the first time it picks the group's last tool, then it steps through the group.
 tool_group_activate :: proc(gi: int) {
 	g := &tool_groups[gi]
-	tools := g.tools[:]
+	if len(g.colors) > 0 {
+		next := 0
+		for c, i in g.colors {
+			if group_color_is_current(c) {
+				next = (i + 1) % len(g.colors)
+				break
+			}
+		}
+		group_color_pick(g.colors[next])
+		set_statusf("Fill color: %s", color_hex(g.colors[next]))
+		return
+	}
+	// the hotkey steps through the real tools; a group of only switches flips its first one
+	real := make([dynamic]Tool, context.temp_allocator)
+	for t in g.tools do if !tool_is_toggle(t) do append(&real, t)
+	tools := real[:]
 	n := len(tools)
 	if n == 0 {
-		if len(g.ops) > 0 do group_run_op(gi, group_has_op(g, g.last_op) ? g.last_op : g.ops[0])
+		if len(g.ops) > 0 {
+			group_run_op(gi, group_has_op(g, g.last_op) ? g.last_op : g.ops[0])
+		} else if len(g.tools) > 0 {
+			tool_toggle(g.tools[0])
+		}
 		return
 	}
 	if current_group() == gi {
@@ -228,8 +284,9 @@ key_name :: proc(k: KeyboardKey) -> string {
 	return "?"
 }
 
-// Preferences: "groups=<key>:<Tool>,<Tool>:<name>:<Cmd>,<Cmd>;<key>:..." (key = key code, 0 for none; tools and
-// path operations by name).
+// Preferences: "groups=<key>:<Tool>,<Tool>:<name>:<Cmd>,<Cmd>[:<color>,<color>];<key>:..." (key = key code, 0 for
+// none; tools and path operations by name; colors as RRGGBB, and the field only when there are any, so a group
+// without them reads the same as in older files).
 tool_groups_serialize :: proc() -> string {
 	sb := strings.builder_make(context.temp_allocator)
 	for &g, i in tool_groups {
@@ -237,6 +294,10 @@ tool_groups_serialize :: proc() -> string {
 		for t, j in g.tools do fmt.sbprintf(&sb, "%s%v", j > 0 ? "," : "", t)
 		fmt.sbprintf(&sb, ":%s:", name_str(&g.name))
 		for c, j in g.ops do fmt.sbprintf(&sb, "%s%v", j > 0 ? "," : "", c)
+		if len(g.colors) > 0 {
+			strings.write_byte(&sb, ':')
+			for c, j in g.colors do fmt.sbprintf(&sb, "%s%02x%02x%02x", j > 0 ? "," : "", c.r, c.g, c.b)
+		}
 	}
 	return strings.to_string(sb)
 }
@@ -263,7 +324,19 @@ tool_groups_parse :: proc(s: string) {
 				}
 			}
 		}
-		if len(g.tools) > 0 do g.last = g.tools[0]
+		if len(fields) > 4 && len(g.tools) == 0 && len(g.ops) == 0 {
+			for cs in strings.split(fields[4], ",", context.temp_allocator) {
+				if c, ok := parse_color(fmt.tprintf("#%s", cs), BLACK); ok && len(cs) == 6 && len(g.colors) < MAX_GROUP_COLORS {
+					append(&g.colors, c)
+				}
+			}
+		}
+		for t in g.tools {
+			if !tool_is_toggle(t) {
+				g.last = t
+				break
+			}
+		}
 		if len(g.ops) > 0 do g.last_op = g.ops[0]
 		append(&tool_groups, g)
 	}
@@ -306,11 +379,21 @@ panel_groups_bar :: proc(r: Rect) {
 	ARROW :: "->"
 	cg := current_group()
 	for &g, gi in tool_groups {
-		if len(g.tools) == 0 && len(g.ops) == 0 do continue
+		if len(g.tools) == 0 && len(g.ops) == 0 && len(g.colors) == 0 do continue
 		active := cg == gi
 		shown_icon: Icon
-		if len(g.tools) > 0 {
-			shown := active ? cur_tool : (tool_group_has(&g, g.last) ? g.last : g.tools[0])
+		shown_color: Color
+		if len(g.colors) > 0 {
+			shown_color = g.colors[0]
+			for c in g.colors {
+				if group_color_is_current(c) {
+					shown_color, active = c, true
+				}
+			}
+		} else if len(g.tools) > 0 {
+			shown := active ? cur_tool : (tool_group_has(&g, g.last) && !tool_is_toggle(g.last) ? g.last : g.tools[0])
+			// a group of only switches shows its first one, lit while it is on
+			if tool_is_toggle(shown) do active = tool_toggle_on(shown)
 			shown_icon = TOOL_ICONS[shown]
 		} else {
 			op, _ := path_op(group_has_op(&g, g.last_op) ? g.last_op : g.ops[0])
@@ -323,7 +406,7 @@ panel_groups_bar :: proc(r: Rect) {
 		cw := 8 + label_w + 6 + text_w(ARROW) + 6 + 18 + 8
 		if x + cw > limit do break
 		cell := Rect{x, r.y + 3, cw, r.h - 6}
-		tip := key == "" ? Tip{title, "Click to use this group's tool, or to repeat its last operation."} : Tip{fmt.tprintf("%s (%s)", title, key), "Click or press the key to use this group's tool, or to repeat its last operation. Again steps to its next tool."}
+		tip := key == "" ? Tip{title, "Click to use this group's tool, repeat its last operation, or step to its next color."} : Tip{fmt.tprintf("%s (%s)", title, key), "Click or press the key to use this group's tool, repeat its last operation, or step to its next color. Again steps to its next tool."}
 		clicked, _, hover := button_behavior(make_id(cell, "grpcell"), cell, tip)
 		if active {
 			draw_rrect(f32(cell.x), f32(cell.y), f32(cell.w), f32(cell.h), RADIUS, C_ACCENT_TINT)
@@ -341,7 +424,13 @@ panel_groups_bar :: proc(r: Rect) {
 		lx += label_w + 6
 		text(lx, ty, ARROW, C_TEXT_DIM)
 		lx += text_w(ARROW) + 6
-		icon_centered(shown_icon, Rect{lx, cell.y, 18, cell.h}, active ? C_ACCENT : C_TEXT)
+		if len(g.colors) > 0 {
+			sw := Rect{lx + 1, cell.y + 4, 16, cell.h - 8}
+			draw_rrect(f32(sw.x), f32(sw.y), f32(sw.w), f32(sw.h), 2, shown_color)
+			draw_rrect_outline(f32(sw.x), f32(sw.y), f32(sw.w), f32(sw.h), 2, active ? WHITE : C_RING_HI)
+		} else {
+			icon_centered(shown_icon, Rect{lx, cell.y, 18, cell.h}, active ? C_ACCENT : C_TEXT)
+		}
 		if clicked do tool_group_activate(gi)
 		x += cw + 6
 	}

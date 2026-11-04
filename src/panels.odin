@@ -39,8 +39,90 @@ panel_right :: proc() {
 	oui.element_leaf(uictx, "spacer", "spacer")
 	otext("count", fmt.tprintf("%d objects", len(doc.root.children)), "dim", {"Object count", "How many objects are at the top level of this document. Objects inside a group are not counted."})
 	oui.end(uictx)
-	osection("props-head", "Properties", "The look and position of the selected objects. With nothing selected, the colours and stroke settings apply to new shapes.")
+	osection("props-head", "Properties", "The look and position of the selected objects. With nothing selected, the colors and stroke settings apply to new shapes.")
 	oui_slot("properties", "properties")
+	// a short window needs the room for the properties
+	if show_navigator && ui.h >= 360 {
+		osection("nav-head", "Navigator", "The whole page, with a box around what the view shows.")
+		oui_slot("navigator", "navigator")
+	}
+}
+
+// A panel that scrolls lays its widgets out past its own box, clipped away, where they could still catch the pointer
+// over whatever is really there. Hides the pointer from them unless a widget is being dragged. Returns the position
+// to give back with panel_pointer_end.
+panel_pointer_begin :: proc(r: Rect) -> (mx, my: i32) {
+	mx, my = ui.mx, ui.my
+	if ui.active_id == 0 && !in_rect(r, mx, my) do ui.mx, ui.my = -100000, -100000
+	return
+}
+
+panel_pointer_end :: proc(mx, my: i32) {
+	ui.mx, ui.my = mx, my
+}
+
+// Navigator ----------------------------------------------------------------------------------------------------
+
+show_navigator := true
+
+@(private = "file")
+Nav_Cache :: struct {
+	tex:     Texture,
+	doc:     ^Doc,
+	version: int,
+	time:    f64,
+}
+
+@(private = "file")
+nav: Nav_Cache
+
+// The whole page with the visible area marked. Click or drag to move the view.
+panel_navigator :: proc(r: Rect) {
+	ui.layer = 0
+	d := doc
+	ctl_well(r)
+	if r.w <= 8 || r.h <= 8 || d.w <= 0 || d.h <= 0 do return
+	z := min(f32(r.w - 8) / d.w, f32(r.h - 8) / d.h)
+	w, h := d.w * z, d.h * z
+	dst := FRect{math.floor(f32(r.x) + (f32(r.w) - w) / 2), math.floor(f32(r.y) + (f32(r.h) - h) / 2), w, h}
+	pw, ph := max(int(math.round(w * ui.scale)), 1), max(int(math.round(h * ui.scale)), 1)
+	// redrawn a few times a second at most: it shows the same drawing as the canvas, which comes first
+	same_view := nav.doc == d && int(nav.tex.w) == pw && int(nav.tex.h) == ph
+	if !same_view || (nav.version != d.version && ui.time - nav.time > 0.2) {
+		pix := make([]Color, pw * ph, context.temp_allocator)
+		rs: Raster
+		raster_init(&rs, pw, ph)
+		defer raster_free(&rs)
+		k := f32(pw) / d.w
+		render_doc_to(d, pix, pw, ph, Mat{k, 0, 0, k, 0, 0}, &rs, true)
+		tex_destroy(&nav.tex)
+		nav.tex = tex_from_pixels(pix, pw, ph, .Linear)
+		nav.doc, nav.version, nav.time = d, d.version, ui.time
+	}
+	draw_tex(nav.tex, {0, 0, f32(nav.tex.w), f32(nav.tex.h)}, dst)
+	vp := canvas_vp
+	vr := FRect{dst.x + (f32(vp.x) - d.ox) / d.zoom * z, dst.y + (f32(vp.y) - d.oy) / d.zoom * z, f32(vp.w) / d.zoom * z, f32(vp.h) / d.zoom * z}
+	clip_begin(r)
+	draw_rrect_outline(vr.x, vr.y, vr.w, vr.h, 0, C_ACCENT)
+	clip_end()
+	tip_area(r, "navigator", {"Navigator", "Click or drag to move the view to that part of the page."})
+	if act, fx, fy := drag_area(r, make_id(r, "nav")); act {
+		// center the view on the clicked point
+		px := (f32(r.x) + fx * f32(r.w - 1) - dst.x) / z
+		py := (f32(r.y) + fy * f32(r.h - 1) - dst.y) / z
+		d.ox = f32(vp.x) + f32(vp.w) / 2 - px * d.zoom
+		d.oy = f32(vp.y) + f32(vp.h) / 2 - py * d.zoom
+	}
+}
+
+drag_area :: proc(r: Rect, id: u32) -> (active: bool, fx, fy: f32) {
+	if ui_hover(r) && ui.pressed[0] do ui.active_id = id
+	if ui.active_id == id && ui.down[0] {
+		fx = clamp(f32(ui.mx - r.x) / f32(max(r.w - 1, 1)), 0, 1)
+		fy = clamp(f32(ui.my - r.y) / f32(max(r.h - 1, 1)), 0, 1)
+		active = true
+	}
+	return
 }
 
 // Object list ------------------------------------------------------------------------------------------------
@@ -192,11 +274,38 @@ node_reorder :: proc(d: ^Doc, n, target: ^Node, in_front: bool) -> bool {
 	return true
 }
 
-// Colour editing ---------------------------------------------------------------------------------------------
+// Color editing ---------------------------------------------------------------------------------------------
 
-PALETTE := [?]Color {
+DEFAULT_SWATCHES := [?]Color {
 	{0, 0, 0, 255}, {64, 64, 64, 255}, {128, 128, 128, 255}, {192, 192, 192, 255}, {255, 255, 255, 255}, {214, 64, 52, 255},
 	{246, 170, 104, 255}, {240, 196, 60, 255}, {70, 150, 90, 255}, {60, 160, 200, 255}, {70, 90, 190, 255}, {150, 80, 170, 255},
+}
+
+@(private = "file")
+swatches: [dynamic]Color
+
+swatches_list :: proc() -> []Color {
+	@(static) filled := false
+	if !filled {
+		filled = true
+		append(&swatches, ..DEFAULT_SWATCHES[:])
+	}
+	return swatches[:]
+}
+
+// Colors picked lately, newest first.
+RECENT_MAX :: 16
+recent: [dynamic]Color
+
+recent_push :: proc(c: Color) {
+	for x, i in recent {
+		if x == c {
+			ordered_remove(&recent, i)
+			break
+		}
+	}
+	inject_at(&recent, 0, c)
+	if len(recent) > RECENT_MAX do resize(&recent, RECENT_MAX)
 }
 
 hex_buf: Name
@@ -206,41 +315,85 @@ color_hex_string :: proc(c: Color) -> string {
 	return fmt.tprintf("%02x%02x%02x%02x", c.r, c.g, c.b, c.a)
 }
 
-// Palette, RGB(A) sliders and a hex field. Returns true when the colour changed. `y` is advanced.
-color_edit :: proc(x, w: i32, y: ^i32, col: ^Color, alpha: bool) -> bool {
-	changed := false
-	cw := (w - 2) / i32(len(PALETTE))
-	for c, i in PALETTE {
-		sr := Rect{x + i32(i) * cw, y^, cw - 1, 12}
-		fill_rect(sr, c)
-		tip_area(sr, "palette", {"Colour swatch", "Click to use this colour. The opacity stays as it is."})
-		if ui_hover(sr) {
-			outline_rect(sr, WHITE)
-			if ui.pressed[0] {
-				a := col.a
-				col^ = c
-				col.a = a
-				changed = true
-			}
-		}
+// The picker's position, kept apart from the color so the hue survives grays and black.
+@(private = "file")
+Picker_State :: struct {
+	h, s, v: f32,
+	rgb:     [3]u8, // the color these belong to
+}
+
+@(private = "file")
+picker: Picker_State
+
+@(private = "file")
+recent_pending: Maybe(Color) // edited just now: joins the recent colors when the pointer lets go
+
+// Saturation / value field and hue strip. Returns true when the color changed.
+@(private = "file")
+color_picker :: proc(r: Rect, col: ^Color) -> bool {
+	if picker.rgb != {col.r, col.g, col.b} {
+		h, s, v := rgb_to_hsv(col^)
+		if s > 0.001 && v > 0.001 do picker.h = h
+		picker.s, picker.v = s, v
+		picker.rgb = {col.r, col.g, col.b}
 	}
-	y^ += 16
+	sv := Rect{r.x, r.y, r.w - 20, r.h}
+	hue := Rect{r.x + r.w - 12, r.y, 12, r.h}
+	draw_gradient(f32(sv.x), f32(sv.y), f32(sv.w), f32(sv.h), WHITE, hsv_to_rgb(picker.h, 1, 1), false)
+	draw_gradient(f32(sv.x), f32(sv.y), f32(sv.w), f32(sv.h), Color{0, 0, 0, 0}, Color{0, 0, 0, 255})
+	outline_rect(sv, C_RING_HI)
+	tip_area(sv, "sv", {"Saturation and value", "Drag to set the color: left to right from gray to full color, top to bottom from bright to dark."})
+	tip_area(hue, "hue", {"Hue", "Drag up or down to choose the hue."})
+	changed := false
+	if act, fx, fy := drag_area(sv, make_id(sv, "sv")); act {
+		picker.s, picker.v = fx, 1 - fy
+		changed = true
+	}
+	cx := sv.x + i32(picker.s * f32(sv.w - 1))
+	cy := sv.y + i32((1 - picker.v) * f32(sv.h - 1))
+	draw_circle_outline(f32(cx) + 0.5, f32(cy) + 0.5, 4, BLACK)
+	draw_circle_outline(f32(cx) + 0.5, f32(cy) + 0.5, 5, WHITE)
+	for i in 0 ..< 6 {
+		seg_h := hue.h / 6
+		draw_gradient(f32(hue.x), f32(hue.y + i32(i) * seg_h), f32(hue.w), f32(seg_h + 1), hsv_to_rgb(f32(i) * 60, 1, 1), hsv_to_rgb(f32(i + 1) * 60, 1, 1))
+	}
+	outline_rect(hue, C_RING_HI)
+	if act, _, fy := drag_area(hue, make_id(hue, "hue")); act {
+		picker.h = fy * 359.9
+		changed = true
+	}
+	hy := hue.y + i32(picker.h / 360 * f32(hue.h - 1))
+	draw_rrect(f32(hue.x - 3), f32(hy - 2), f32(hue.w + 6), 5, 2, WHITE)
+	draw_rrect_outline(f32(hue.x - 3), f32(hy - 2), f32(hue.w + 6), 5, 2, Color{0, 0, 0, 160})
+	if changed {
+		c := hsv_to_rgb(picker.h, picker.s, picker.v, col.a)
+		col^ = c
+		picker.rgb = {c.r, c.g, c.b}
+	}
+	return changed
+}
+
+// HSV picker, RGB(A) sliders, a hex field, swatches and recent colors. Returns true when the color changed.
+// `y` is advanced.
+color_edit :: proc(x, w: i32, y: ^i32, col: ^Color, alpha: bool) -> bool {
+	changed := color_picker(Rect{x, y^, w, 84}, col)
+	y^ += 90
 	rv, gv, bv, av := int(col.r), int(col.g), int(col.b), int(col.a)
-	if slider(Rect{x, y^, w, 12}, &rv, 0, 255, "R", {"Red", "How much red is in this colour, from 0 (none) to 255 (full). Drag, or use the mouse wheel."}) {col.r = u8(rv); changed = true}
+	if slider(Rect{x, y^, w, 12}, &rv, 0, 255, "R", {"Red", "How much red is in this color, from 0 (none) to 255 (full). Drag, or use the mouse wheel."}, tint_in = Color{226, 96, 96, 255}) {col.r = u8(rv); changed = true}
 	y^ += 14
-	if slider(Rect{x, y^, w, 12}, &gv, 0, 255, "G", {"Green", "How much green is in this colour, from 0 (none) to 255 (full). Drag, or use the mouse wheel."}) {col.g = u8(gv); changed = true}
+	if slider(Rect{x, y^, w, 12}, &gv, 0, 255, "G", {"Green", "How much green is in this color, from 0 (none) to 255 (full). Drag, or use the mouse wheel."}, tint_in = Color{96, 200, 110, 255}) {col.g = u8(gv); changed = true}
 	y^ += 14
-	if slider(Rect{x, y^, w, 12}, &bv, 0, 255, "B", {"Blue", "How much blue is in this colour, from 0 (none) to 255 (full). Drag, or use the mouse wheel."}) {col.b = u8(bv); changed = true}
+	if slider(Rect{x, y^, w, 12}, &bv, 0, 255, "B", {"Blue", "How much blue is in this color, from 0 (none) to 255 (full). Drag, or use the mouse wheel."}, tint_in = Color{100, 140, 240, 255}) {col.b = u8(bv); changed = true}
 	y^ += 14
 	if alpha {
-		if slider(Rect{x, y^, w, 12}, &av, 0, 255, "A", {"Alpha", "How solid this colour is, from 0 (see-through) to 255 (solid). Drag, or use the mouse wheel."}) {col.a = u8(av); changed = true}
+		if slider(Rect{x, y^, w, 12}, &av, 0, 255, "A", {"Alpha", "How solid this color is, from 0 (see-through) to 255 (solid). Drag, or use the mouse wheel."}) {col.a = u8(av); changed = true}
 		y^ += 14
 	}
 	hr := Rect{x + 24, y^, w - 24, 14}
-	tip_text(x, y^ + 3, "Hex", C_TEXT_DIM, {"Hex colour", "This colour as a hex code."})
+	tip_text(x, y^ + 3, "Hex", C_TEXT_DIM, {"Hex color", "This color as a hex code."})
 	focused := ui.focus_id == make_id(hr, "text")
 	if !focused do name_set(&hex_buf, color_hex_string(col^))
-	if ch, _ := text_field(hr, &hex_buf, {"Hex colour", "This colour as a hex code: RGB, RRGGBB, or RRGGBBAA to include alpha. Type or paste one here."}); ch {
+	if ch, _ := text_field(hr, &hex_buf, {"Hex color", "This color as a hex code: RGB, RRGGBB, or RRGGBBAA to include alpha. Type or paste one here."}); ch {
 		s := name_str(&hex_buf)
 		if c, ok := parse_color(fmt.tprintf("#%s", s), col^); ok && (len(s) == 6 || len(s) == 8 || len(s) == 3) {
 			if !alpha || len(s) < 8 do c.a = col.a
@@ -248,7 +401,59 @@ color_edit :: proc(x, w: i32, y: ^i32, col: ^Color, alpha: bool) -> bool {
 			changed = true
 		}
 	}
-	y^ += 18
+	y^ += 20
+
+	// swatches: colors kept ready to use, for this session
+	tip_text(x, y^ + 3, "Swatches", C_TEXT_DIM, {"Swatches", "Colors kept ready to use. Click one to use it, right-click to remove it. A color group's + can add them all."})
+	if icon_button(Rect{x + w - 16, y^, 16, 14}, .Plus, {"Add swatch", "Add this color to the swatches."}) {
+		swatches_list()
+		append(&swatches, Color{col.r, col.g, col.b, 255})
+	}
+	y^ += 16
+	CELL :: 18
+	cols := max(w / CELL, 1)
+	list := swatches_list()
+	remove := -1
+	for c, i in list {
+		sr := Rect{x + i32(i) % cols * CELL, y^ + i32(i) / cols * CELL, CELL - 2, CELL - 2}
+		draw_rrect(f32(sr.x), f32(sr.y), f32(sr.w), f32(sr.h), 2, c)
+		draw_rrect_outline(f32(sr.x), f32(sr.y), f32(sr.w), f32(sr.h), 2, ui_hover(sr) ? WHITE : C_RING_HI)
+		if ui_hover(sr) {
+			tooltip_hover(make_id(sr, "swatch"), {color_hex(c), "Click to use this color. The opacity stays as it is. Right-click to remove it."})
+			if ui.pressed[0] {
+				col.r, col.g, col.b = c.r, c.g, c.b
+				changed = true
+			} else if ui.pressed[1] {
+				remove = i
+			}
+		}
+	}
+	if remove >= 0 do ordered_remove(&swatches, remove)
+	y^ += (i32(len(list)) + cols - 1) / cols * CELL + 4
+	if changed do recent_pending = Color{col.r, col.g, col.b, 255}
+
+	// recent colors, newest first; using one doesn't reorder them under the pointer
+	tip_text(x, y^ + 3, "Recent", C_TEXT_DIM, {"Recent colors", "The colors you have picked lately, newest first."})
+	rx := x + 44
+	for c in recent {
+		if rx + 12 > x + w do break
+		sr := Rect{rx, y^ + 1, 12, 12}
+		draw_rrect(f32(sr.x), f32(sr.y), 12, 12, 2, c)
+		draw_rrect_outline(f32(sr.x), f32(sr.y), 12, 12, 2, ui_hover(sr) ? WHITE : C_RING_HI)
+		if ui_hover(sr) {
+			tooltip_hover(make_id(sr, "recent"), {color_hex(c), "Click to use this color. The opacity stays as it is."})
+			if ui.pressed[0] {
+				col.r, col.g, col.b = c.r, c.g, c.b
+				changed = true
+			}
+		}
+		rx += 14
+	}
+	y^ += 20
+	if pending, ok := recent_pending.?; ok && !ui.down[0] && ui.focus_id == 0 {
+		recent_push(pending)
+		recent_pending = nil
+	}
 	return changed
 }
 
@@ -276,6 +481,8 @@ panel_properties :: proc(r: Rect) {
 	clip_begin(r)
 	defer clip_end()
 	over := ui_hover(r)
+	real_mx, real_my := panel_pointer_begin(r)
+	defer panel_pointer_end(real_mx, real_my)
 	if over && ui.wheel != 0 && ui.focus_id == 0 && !popup.open do prop_scroll = max(prop_scroll - i32(ui.wheel * 24), 0)
 	x := r.x + 8
 	w := r.w - 16
@@ -294,7 +501,7 @@ panel_properties :: proc(r: Rect) {
 		sw := Rect{br.x + 3, br.y + 3, 14, 12}
 		draw_paint_swatch(sw, p)
 		text(sw.x + 20, br.y + (br.h - FONT_CAP) / 2, k == 0 ? "Fill" : "Stroke", on ? WHITE : C_TEXT_DIM)
-		tip_area(br, "paint-target", k == 0 ? Tip{"Edit fill", "Edit the colour inside the object. The controls below change to match."} : Tip{"Edit stroke", "Edit the colour of the object's outline. The controls below change to match."})
+		tip_area(br, "paint-target", k == 0 ? Tip{"Edit fill", "Edit the color inside the object. The controls below change to match."} : Tip{"Edit stroke", "Edit the color of the object's outline. The controls below change to match."})
 		if ui_hover(br) && ui.pressed[0] {
 			prop_target = k
 			grad_stop = 0
@@ -307,7 +514,7 @@ panel_properties :: proc(r: Rect) {
 	else do paint = prop_target == 0 ? cur_fill : cur_stroke
 
 	kinds := [?]string{"None", "Solid", "Linear gradient", "Radial gradient"}
-	if nv, ch := combo(Rect{x, y, w, 14}, kinds[:], int(paint.kind), {"Paint type", "None: nothing is drawn. Solid: one colour. Linear gradient: colours blend along a line. Radial gradient: colours blend outwards from a centre. On the canvas, the Select tool shows a gradient's handles."}); ch {
+	if nv, ch := combo(Rect{x, y, w, 14}, kinds[:], int(paint.kind), {"Paint type", "None: nothing is drawn. Solid: one color. Linear gradient: colors blend along a line. Radial gradient: colors blend outwards from a center. On the canvas, the Select tool shows a gradient's handles."}); ch {
 		np := paint
 		switch Paint_Kind(nv) {
 		case .None:
@@ -338,7 +545,7 @@ panel_properties :: proc(r: Rect) {
 	}
 
 	// stroke settings
-	tip_text(x, y + 2, "Stroke", C_TEXT_DIM, {"Stroke settings", "How the outline is drawn. To change its colour, pick Stroke at the top of this panel."})
+	tip_text(x, y + 2, "Stroke", C_TEXT_DIM, {"Stroke settings", "How the outline is drawn. To change its color, pick Stroke at the top of this panel."})
 	hline(x + 44, y + 7, w - 44, C_BORDER)
 	y += 16
 	wv := int(cur_sw * 10)
@@ -473,12 +680,12 @@ gradient_edit :: proc(d: ^Doc, x, w: i32, y: ^i32, paint: ^Paint) {
 	// preview bar
 	bar := Rect{x, y^, w, 14}
 	draw_paint_swatch(bar, Paint{kind = .Linear, nstops = paint.nstops, stops = paint.stops})
-	tip_area(bar, "gradient-bar", {"Gradient preview", "How this gradient looks. The markers below it are its colour stops."})
+	tip_area(bar, "gradient-bar", {"Gradient preview", "How this gradient looks. The markers below it are its color stops."})
 	for i in 0 ..< paint.nstops {
 		mx := bar.x + i32(paint.stops[i].t * f32(bar.w - 1))
 		mr := Rect{mx - 3, bar.y + bar.h - 2, 7, 8}
 		fill_rect(mr, i == grad_stop ? WHITE : C_TEXT_DIM)
-		tip_area(mr, "gradient-stop", {"Colour stop", "Click to select it, then edit its position and colour below."})
+		tip_area(mr, "gradient-stop", {"Color stop", "Click to select it, then edit its position and color below."})
 		if ui_hover(mr) && ui.pressed[0] do grad_stop = i
 	}
 	y^ += 24
@@ -487,13 +694,13 @@ gradient_edit :: proc(d: ^Doc, x, w: i32, y: ^i32, paint: ^Paint) {
 	if paint.nstops > 0 {
 		tv := int(paint.stops[grad_stop].t * 100 + 0.5)
 		hw := (w - 4) / 2
-		if slider(Rect{x, y^, hw, 14}, &tv, 0, 100, "Stop", {"Stop position", "Where the selected colour stop sits along the gradient. It can't pass the stops on either side. Drag, or use the mouse wheel."}, "%") {
+		if slider(Rect{x, y^, hw, 14}, &tv, 0, 100, "Stop", {"Stop position", "Where the selected color stop sits along the gradient. It can't pass the stops on either side. Drag, or use the mouse wheel."}, "%") {
 			lo := grad_stop > 0 ? paint.stops[grad_stop - 1].t : 0
 			hi := grad_stop < paint.nstops - 1 ? paint.stops[grad_stop + 1].t : 1
 			np.stops[grad_stop].t = clamp(f32(tv) / 100, lo, hi)
 			changed = true
 		}
-		if button(Rect{x + hw + 4, y^, hw / 2 - 2, 14}, "+ Stop", {"", "Add a colour stop next to the selected one, halfway to its neighbour and with the blended colour."}) && paint.nstops < MAX_STOPS {
+		if button(Rect{x + hw + 4, y^, hw / 2 - 2, 14}, "+ Stop", {"", "Add a color stop next to the selected one, halfway to its neighbor and with the blended color."}) && paint.nstops < MAX_STOPS {
 			i := grad_stop
 			j := min(i + 1, paint.nstops - 1)
 			if j == i do i = max(i - 1, 0)
@@ -506,7 +713,7 @@ gradient_edit :: proc(d: ^Doc, x, w: i32, y: ^i32, paint: ^Paint) {
 			grad_stop = pos
 			changed = true
 		}
-		if button(Rect{x + hw + 4 + hw / 2 + 2, y^, hw / 2 - 2, 14}, "- Stop", {"", "Remove the selected colour stop. A gradient always keeps at least two."}) && paint.nstops > 2 {
+		if button(Rect{x + hw + 4 + hw / 2 + 2, y^, hw / 2 - 2, 14}, "- Stop", {"", "Remove the selected color stop. A gradient always keeps at least two."}) && paint.nstops > 2 {
 			for k in grad_stop ..< np.nstops - 1 do np.stops[k] = np.stops[k + 1]
 			np.nstops -= 1
 			grad_stop = clamp(grad_stop, 0, np.nstops - 1)
@@ -519,11 +726,11 @@ gradient_edit :: proc(d: ^Doc, x, w: i32, y: ^i32, paint: ^Paint) {
 			changed = true
 		}
 		spreads := [?]string{"Pad", "Reflect", "Repeat"}
-		if nv, ch := combo(Rect{x, y^, (w - 4) / 2, 14}, spreads[:], int(paint.spread), {"Spread", "What happens past the ends of the gradient. Pad: the end colours carry on. Reflect: it repeats, mirrored each time. Repeat: it starts over."}); ch {
+		if nv, ch := combo(Rect{x, y^, (w - 4) / 2, 14}, spreads[:], int(paint.spread), {"Spread", "What happens past the ends of the gradient. Pad: the end colors carry on. Reflect: it repeats, mirrored each time. Repeat: it starts over."}); ch {
 			np.spread = u8(nv)
 			changed = true
 		}
-		if button(Rect{x + (w - 4) / 2 + 4, y^, (w - 4) / 2, 14}, "Fit to object", {"Fit to object", "Reset the gradient's position so it spans the selected object. Its colours are kept."}) {
+		if button(Rect{x + (w - 4) / 2 + 4, y^, (w - 4) / 2, 14}, "Fit to object", {"Fit to object", "Reset the gradient's position so it spans the selected object. Its colors are kept."}) {
 			sel := first_selected(d)
 			if sel != nil {
 				b := node_local_bounds(sel)

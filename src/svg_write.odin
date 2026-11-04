@@ -117,7 +117,37 @@ valid_id :: proc(s: string) -> bool {
 
 default_names := [?]string{"Group", "Path", "Rectangle", "Ellipse", "Text", "Line", "Polygon", "Polyline", "Outlines", "Use"}
 
-write_node :: proc(sb, defs: ^strings.Builder, n: ^Node, depth: int, used_ids: ^map[string]bool) {
+// An object's name is saved as its id. An id can't hold every name: it has limits on its characters, so a name like
+// "Layer 1" goes in data-pangolin-name alone. It also appears only once in a file, but names repeat, because a new
+// frame and Duplicate copy them: a repeat gets a free id (Ball-2) and keeps its name in data-pangolin-name. `used_ids`
+// counts what each id has been used for, so many copies of a name don't each search from the start.
+write_name :: proc(attrs: ^strings.Builder, name: string, used_ids: ^map[string]int) {
+	if name == "" do return
+	for dn in default_names {
+		if dn == name do return
+	}
+	if !valid_id(name) {
+		strings.write_string(attrs, " data-pangolin-name=\"")
+		xml_escape(attrs, name)
+		strings.write_byte(attrs, '"')
+		return
+	}
+	id := name
+	if count := used_ids[name]; count > 0 {
+		i := count + 1
+		for {
+			id = fmt.tprintf("%s-%d", name, i)
+			if used_ids[id] == 0 do break
+			i += 1
+		}
+		used_ids[strings.clone(name, context.temp_allocator)] = i
+	}
+	used_ids[strings.clone(id, context.temp_allocator)] = 1
+	fmt.sbprintf(attrs, " id=\"%s\"", id)
+	if id != name do fmt.sbprintf(attrs, " data-pangolin-name=\"%s\"", name)
+}
+
+write_node :: proc(sb, defs: ^strings.Builder, n: ^Node, depth: int, used_ids: ^map[string]int) {
 	if !n.visible && n.kind != .Group {
 		// hidden objects are kept, flagged with display="none"
 	}
@@ -125,20 +155,11 @@ write_node :: proc(sb, defs: ^strings.Builder, n: ^Node, depth: int, used_ids: ^
 	nl := svg_opts.minify ? "" : "\n"
 	strings.write_string(sb, ind)
 	attrs := strings.builder_make(context.temp_allocator)
-	name := name_str(&n.name)
-	if valid_id(name) && !used_ids[name] {
-		is_default := false
-		for dn in default_names {
-			if dn == name do is_default = true
-		}
-		if !is_default {
-			used_ids[strings.clone(name, context.temp_allocator)] = true
-			fmt.sbprintf(&attrs, " id=\"%s\"", name)
-		}
-	}
+	write_name(&attrs, name_str(&n.name), used_ids)
 	strings.write_string(&attrs, xf_attr(n.xf))
 	if n.opacity < 1 do fmt.sbprintf(&attrs, " opacity=\"%s\"", fnum(n.opacity))
 	if !n.visible do strings.write_string(&attrs, " display=\"none\"")
+	if n.locked do strings.write_string(&attrs, " data-pangolin-locked=\"true\"")
 	if n.kind == .Group {
 		fmt.sbprintf(sb, "<g%s>%s", strings.to_string(attrs), nl)
 		for c in n.children do write_node(sb, defs, c, depth + 1, used_ids)
@@ -206,14 +227,63 @@ write_node :: proc(sb, defs: ^strings.Builder, n: ^Node, depth: int, used_ids: ^
 	}
 }
 
+// Each frame is a top-level group. Frames after the first are hidden, so a viewer without animation shows frame 1,
+// and a discrete <animate> in each makes the file play in a browser.
+write_frames :: proc(d: ^Doc, body, defs: ^strings.Builder, used: ^map[string]int) {
+	nl := svg_opts.minify ? "" : "\n"
+	ind := svg_opts.minify ? "" : "  "
+	inner := svg_opts.minify ? "" : "    "
+	total := 0
+	for f in d.frames do total += max(f.duration, 10)
+	at := 0
+	n := len(d.frames)
+	for f, i in d.frames {
+		dur := max(f.duration, 10)
+		t0, t1 := f64(at) / f64(total), f64(at + dur) / f64(total)
+		values, times: string
+		// the times need more decimals than coordinates: a short frame in a long animation must keep its own time
+		switch {
+		case i == 0:
+			values, times = "inline;none", fmt.tprintf("0;%.6f", t1)
+		case i == n - 1:
+			values, times = "none;inline", fmt.tprintf("0;%.6f", t0)
+		case:
+			values, times = "none;inline;none", fmt.tprintf("0;%.6f;%.6f", t0, t1)
+		}
+		fmt.sbprintf(body, "%s<g data-pangolin-frame=\"%d\"%s>%s", ind, f.duration, i > 0 ? " display=\"none\"" : "", nl)
+		fmt.sbprintf(body, "%s<animate attributeName=\"display\" values=\"%s\" keyTimes=\"%s\" calcMode=\"discrete\" dur=\"%dms\" repeatCount=\"indefinite\"/>%s", inner, values, times, total, nl)
+		for c in frame_root(d, i).children do write_node(body, defs, c, 1, used)
+		fmt.sbprintf(body, "%s</g>%s", ind, nl)
+		at += dur
+	}
+}
+
+// The tags as an attribute of the svg element: name:from:to:direction:color, separated by ;
+tags_attr :: proc(d: ^Doc) -> string {
+	if len(d.frames) < 2 || len(d.tags) == 0 do return ""
+	sb := strings.builder_make(context.temp_allocator)
+	strings.write_string(&sb, " data-pangolin-tags=\"")
+	for &t, i in d.tags {
+		if i > 0 do strings.write_byte(&sb, ';')
+		xml_escape(&sb, group_clean_name(name_str(&t.name)))
+		fmt.sbprintf(&sb, ":%d:%d:%d:%02x%02x%02x", t.from, t.to, int(t.dir), t.color.r, t.color.g, t.color.b)
+	}
+	strings.write_byte(&sb, '"')
+	return strings.to_string(sb)
+}
+
 svg_string :: proc(d: ^Doc) -> string {
 	out := strings.builder_make(context.temp_allocator)
 	body := strings.builder_make(context.temp_allocator)
 	defs := strings.builder_make(context.temp_allocator)
-	used := make(map[string]bool, 16, context.temp_allocator)
-	for c in d.root.children do write_node(&body, &defs, c, 0, &used)
+	used := make(map[string]int, 16, context.temp_allocator)
 	nl := svg_opts.minify ? "" : "\n"
-	fmt.sbprintf(&out, "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"%s\" height=\"%s\" viewBox=\"0 0 %s %s\">%s", fnum(d.w), fnum(d.h), fnum(d.w), fnum(d.h), nl)
+	if len(d.frames) > 1 {
+		write_frames(d, &body, &defs, &used)
+	} else {
+		for c in d.root.children do write_node(&body, &defs, c, 0, &used)
+	}
+	fmt.sbprintf(&out, "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"%s\" height=\"%s\" viewBox=\"0 0 %s %s\"%s>%s", fnum(d.w), fnum(d.h), fnum(d.w), fnum(d.h), tags_attr(d), nl)
 	if strings.builder_len(defs) > 0 {
 		fmt.sbprintf(&out, "  <defs>%s%s  </defs>%s", nl, strings.to_string(defs), nl)
 	}
@@ -227,8 +297,9 @@ svg_save :: proc(d: ^Doc, path: string) -> bool {
 	return write_file(path, transmute([]u8)s)
 }
 
-// Renders the document at `scale` into RGBA pixels (transparent background unless `with_bg`).
-render_to_pixels :: proc(d: ^Doc, scale: f32, bg: Color, with_bg: bool) -> (pix: []Color, w, h: int) {
+// Renders the document at `scale` into RGBA pixels (transparent background unless `with_bg`): the live frame, or
+// frame number `frame`.
+render_to_pixels :: proc(d: ^Doc, scale: f32, bg: Color, with_bg: bool, frame := -1) -> (pix: []Color, w, h: int) {
 	w = max(int(d.w * scale + 0.5), 1)
 	h = max(int(d.h * scale + 0.5), 1)
 	pix = make([]Color, w * h, context.temp_allocator)
@@ -236,7 +307,7 @@ render_to_pixels :: proc(d: ^Doc, scale: f32, bg: Color, with_bg: bool) -> (pix:
 	r: Raster
 	raster_init(&r, w, h)
 	defer raster_free(&r)
-	render_doc_to(d, pix, w, h, mat_scale(scale, scale), &r, false)
+	render_doc_to(d, pix, w, h, mat_scale(scale, scale), &r, false, frame >= 0 ? frame_root(d, frame) : nil)
 	return
 }
 

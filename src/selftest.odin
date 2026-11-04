@@ -217,6 +217,11 @@ selftest :: proc() -> int {
 	tool_groups_selftest(&t)
 	reorder_selftest(&t)
 	font_edit_selftest(&t)
+	frames_selftest(&t)
+	groups_more_selftest(&t)
+	keys_selftest(&t)
+	workspaces_selftest(&t)
+	files_selftest(&t)
 
 	fmt.printf("%d passed, %d failed\n", t.passed, t.failed)
 	return t.failed == 0 ? 0 : 1
@@ -283,11 +288,28 @@ demo_setup :: proc() {
 	t.fill = paint_solid({40, 30, 24, 255})
 	append(&d.root.children, t)
 	sel_set(d, n)
+	// a few frames, so the timeline has something to show
+	doc = d
+	for i in 1 ..< 4 {
+		frame_add(d, true)
+		for c in d.root.children do node_translate(c, f32(i) * 18, 0)
+	}
+	frame_set(d, 0)
+	sel_set(d, n)
+	t2 := Tag {
+		from  = 1,
+		to    = 2,
+		color = hsv_to_rgb(160, 0.6, 0.9),
+	}
+	name_set(&t2.name, "drift")
+	append(&d.tags, t2)
+	for &s in d.undo do state_free(&s)
+	clear(&d.undo)
 	d.modified = false
 	add_doc(d)
 }
 
-// Renders every icon at the sizes the interface uses (and two larger ones), light on the panel colour (--icon-sheet).
+// Renders every icon at the sizes the interface uses (and two larger ones), light on the panel color (--icon-sheet).
 icon_sheet :: proc(path: string) -> int {
 	SIZES :: [?]int{12, 16, 24, 32, 48}
 	CELL :: 180

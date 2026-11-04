@@ -344,7 +344,7 @@ path_fix_direction :: proc(p: ^Path) {
 			pts := polys[k].pts[:]
 			area := poly_area(pts)
 			probe := pts[0]
-			// a vertex on a neighbour's outline is ambiguous; nudge toward the centroid
+			// a vertex on a neighbor's outline is ambiguous; nudge toward the centroid
 			cen: Vec2
 			for q in pts do cen += q
 			cen /= f32(len(pts))

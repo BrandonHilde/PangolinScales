@@ -76,7 +76,7 @@ style_set_opacity :: proc(d: ^Doc, o: f32) {
 
 // Gradient helpers ----------------------------------------------------------------------------------------
 
-// Makes a two-stop gradient across the object's bounds from a solid colour.
+// Makes a two-stop gradient across the object's bounds from a solid color.
 paint_make_gradient :: proc(base: Paint, bounds: Bounds, radial: bool) -> Paint {
 	b := bounds
 	g: Paint

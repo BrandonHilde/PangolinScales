@@ -22,12 +22,12 @@ cmd_help :: proc(c: Cmd) -> string {
 		return "Save the current document, asking for a file name the first time."
 	case .Save_As:
 		return "Save the current document under a new file name."
-	case .Export_PNG:
-		return "Save the page as a PNG image, at a scale you choose in the next dialog."
+	case .Export:
+		return "Save the page as an image at a scale you choose: a PNG of this frame or, with several frames, a numbered PNG sequence or an animated GIF."
 	case .Close_Doc:
 		return "Close the current tab. If it has unsaved changes you are asked first."
 	case .Quit:
-		return "Quit Pangolin Scales."
+		return "Exit Pangolin Scales."
 	case .Undo:
 		return "Take back the last change."
 	case .Redo:
@@ -115,7 +115,9 @@ cmd_help :: proc(c: Cmd) -> string {
 	case .Fit_View:
 		return "Zoom and scroll so the whole page fits in the window."
 	case .Actual_Size:
-		return "Show the drawing at 100%, with the page centred."
+		return "Show the drawing at 100%, with the page centered."
+	case .Zoom_200:
+		return "Show the drawing at 200%, with the page centered."
 	case .Zoom_In:
 		return "Zoom in on the middle of the view."
 	case .Zoom_Out:
@@ -128,10 +130,16 @@ cmd_help :: proc(c: Cmd) -> string {
 		return "Hide the toolbar, tabs and side panels to give the drawing more room. A bar along the bottom keeps the tool groups."
 	case .Toggle_Close_Paths:
 		return "Off: open paths stay open, and Union joins them without adding a line. On: Union, Subtract, Intersect, Exclude and Offset close them with a straight line, and a freehand stroke ending near its start closes itself."
-	case .Interface_Scale:
+	case .UI_Scale:
 		return "Make the whole interface larger or smaller, or let it size itself to fit your screen."
-	case .Reset_Tool_Groups:
-		return "Replace your tool groups with the default set. Any changes you made to the groups are lost."
+	case .Toggle_Onion:
+		return "Show faint copies of the neighboring frames under this one, to help with drawing motion."
+	case .Toggle_Timeline:
+		return "Show the frames of this drawing under the canvas, with playback, tags and the onion skin."
+	case .Toggle_Files:
+		return "Show the files in a folder under the canvas. Drag a thumbnail onto the canvas or the tab bar."
+	case .Toggle_Navigator:
+		return "Show the whole page at the bottom of the right panel, with the visible area marked. Click or drag there to move the view."
 	case .Page_Size:
 		return "Set the width and height of the page. Objects stay where they are."
 	case .Fit_Page_To_Content:
@@ -156,10 +164,42 @@ cmd_help :: proc(c: Cmd) -> string {
 		return "Go to the previous glyph in the font."
 	case .Font_Next_Glyph:
 		return "Go to the next glyph in the font."
+	case .Frame_New:
+		return "Add an empty frame after the current one and go to it."
+	case .Frame_Dup:
+		return "Add a frame after the current one that starts as a copy of it, and go to it."
+	case .Frame_Del:
+		return "Remove the current frame. A document always keeps one."
+	case .Frame_Left:
+		return "Move the current frame one step earlier in the animation."
+	case .Frame_Right:
+		return "Move the current frame one step later in the animation."
+	case .Frame_Prev:
+		return "Go to the previous frame, back to the last one before the first."
+	case .Frame_Next:
+		return "Go to the next frame, back to the first one after the last."
+	case .Frame_First:
+		return "Go to the first frame of the animation."
+	case .Frame_Last:
+		return "Go to the last frame of the animation."
+	case .Play:
+		return "Start or stop the animation preview, using the range picked in the timeline."
+	case .Tags:
+		return "Name ranges of frames, such as walk or jump, and set their playback direction. A tag can be played and exported on its own."
+	case .Frame_Props:
+		return "Set how long the current frame shows, or all frames at once."
 	case .Shortcuts:
 		return "List the keyboard shortcuts."
 	case .About:
-		return "Show the version and licence of Pangolin Scales."
+		return "Show the version and license of Pangolin Scales."
+	case .Ws_Manage:
+		return "Switch workspaces, save the current tool set-up under a name, or delete saved ones."
+	case .Ws_Import:
+		return "Load a .scws workspace file, switch to it and keep a copy in your list."
+	case .Ws_Export:
+		return "Save the current tool set-up to a .scws file, to back it up or use it on another computer."
+	case .Ws_First ..= .Ws_Last:
+		return "Switch to this saved workspace: its tool groups, with their hotkeys, operations and colors."
 	}
 	return ""
 }
@@ -170,13 +210,47 @@ TOOL_HELP := [Tool]string {
 	.Control  = "Like Node Edit, but only control points can be picked, even ones on top of an anchor. Where several overlap, click to step through them, then drag or use the arrow keys. Alt breaks handle symmetry.",
 	.Pen      = "Click for a straight line, drag for a curve. Click the first point to close with a straight line, or drag it to close with a curve. Enter or Esc finishes, Backspace removes the last point.",
 	.Freehand = "Drag to draw a stroke, which is fitted with smooth curves. The Smoothing setting controls how closely they follow your hand.",
-	.Rect     = "Drag to draw a rectangle. Shift makes a square, Alt draws from the centre.",
-	.Ellipse  = "Drag to draw an ellipse. Shift makes a circle, Alt draws from the centre.",
-	.Line     = "Drag to draw a straight line. Shift keeps it to 15 degree steps, Alt draws from the centre.",
+	.Rect     = "Drag to draw a rectangle. Shift makes a square, Alt draws from the center.",
+	.Ellipse  = "Drag to draw an ellipse. Shift makes a circle, Alt draws from the center.",
+	.Line     = "Drag to draw a straight line. Shift keeps it to 15 degree steps, Alt draws from the center.",
 	.Text     = "Click to place text, click existing text to edit it, or drag it to move it. Ctrl+Enter or a click outside finishes.",
 	.Picker   = "Click an object to take its fill. Alt-click to take its stroke instead.",
 	.Hand     = "Drag to scroll the view. Holding Space or dragging with the middle mouse button does this with any tool.",
 	.Zoom     = "Click to zoom in, Alt or Shift-click to zoom out. The mouse wheel zooms with any tool.",
+	.Grid     = "Show or hide the grid over the page. A click while it is on shows its settings, another click turns it off.",
+	.Snap     = "Make drawing and moving snap to the grid. A click while it is on shows its settings, another click turns it off.",
+	.Onion    = "Show faint copies of the neighboring frames under this one. A click while it is on shows its settings, another click turns it off.",
+}
+
+// One line on how to use a tool, in the status bar.
+TOOL_HINT := [Tool]string {
+	.Select   = "Drag to move, handles scale, outside the corners rotates. Shift: keep proportions",
+	.Node     = "Double click a segment to add a node. Alt breaks handle symmetry",
+	.Control  = "Drag a control point. Where they overlap, click to step through them. Arrows nudge. Alt breaks symmetry",
+	.Pen      = "Click: straight line   Drag: curve   First point: click to close straight, drag to close curved   Enter finishes",
+	.Freehand = "Drag to draw; the stroke is fitted with smooth curves",
+	.Rect     = "Shift: square   Alt: from the center",
+	.Ellipse  = "Shift: circle   Alt: from the center",
+	.Line     = "Shift: 15 degree steps   Alt: from the center",
+	.Text     = "Click to place text, click a text object to edit it, drag one to move it",
+	.Picker   = "Click an object to take its fill, Alt-click to take its stroke",
+	.Hand     = "Drag to pan. Space or middle mouse works with any tool",
+	.Zoom     = "Click to zoom in, Alt or Shift click to zoom out. The wheel zooms anywhere",
+	.Grid     = "",
+	.Snap     = "",
+	.Onion    = "",
+}
+
+tool_hint :: proc(t: Tool) -> string {
+	if t == .Text && text_editing() do return "Type to edit. Ctrl+Enter or a click outside finishes. Drag the text to move it"
+	return TOOL_HINT[t]
+}
+
+WS_BUILTIN_HELP := [len(WS_BUILTIN_NAMES)]string {
+	"The standard tool groups: Select, Draw, Shapes, Text, View and Path.",
+	"For drawing with shapes and paths: the path operations and a group of colors close at hand.",
+	"For drawing letters: the point tools first, the operations that clean up outlines, and a grid to snap to.",
+	"For frame by frame work: drawing tools, selection and the onion skin close at hand.",
 }
 
 // The tooltip of a button that runs a command: its name and shortcut, then what it does.
@@ -204,8 +278,10 @@ menu_title_tip :: proc(title: string) -> Tip {
 	case "Object": desc = "Group, stack, flip, rotate, align and distribute objects, and set the page size."
 	case "Path":   desc = "Combine shapes, convert objects to paths, and simplify or offset them."
 	case "Text":   desc = "Convert text to outlines."
+	case "Frame":  desc = "Add, move and step through the frames of an animation, play it, and set durations and tags."
 	case "Font":   desc = "Add glyphs, clean up outlines, step through glyphs and export the font."
-	case "View":   desc = "Zoom, the grid, canvas mode, the interface scale and the tracing image."
+	case "View":   desc = "Zoom, the grid, canvas mode, the panels, the UI scale and the tracing image."
+	case "Workspaces": desc = "Switch between whole tool set-ups, and save, import or export your own."
 	case "Help":   desc = "Keyboard shortcuts and information about the program."
 	}
 	return {"", desc}

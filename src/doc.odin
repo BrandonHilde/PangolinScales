@@ -2,6 +2,7 @@ package pangolin
 
 import "core:fmt"
 import "core:math"
+import "core:slice"
 
 // ---------------------------------------------------------------------------
 // Document model: a tree of nodes. Every node has a local transform; primitives (rect, ellipse) keep their
@@ -45,10 +46,16 @@ Node :: struct {
 	children:    [dynamic]^Node,
 }
 
-// Snapshot of everything undo restores.
+// Snapshot of what undo restores. One stack serves the whole document, so a state says which frame it belongs to,
+// and undoing it goes to that frame. A change to the list of frames (`structure`) is more than one frame's drawing,
+// so it holds a clone of every frame and the tags instead of `root`.
 Doc_State :: struct {
-	w, h: f32,
-	root: ^Node,
+	w, h:      f32,
+	root:      ^Node,
+	frame:     int,
+	structure: bool,
+	frames:    []Frame,
+	tags:      []Tag,
 }
 
 Doc :: struct {
@@ -56,7 +63,10 @@ Doc :: struct {
 	title:     Name,
 	path:      string, // empty if never saved
 	w, h:      f32, // artboard size in user units
-	root:      ^Node,
+	root:      ^Node, // the live frame's drawing
+	frames:    [dynamic]Frame,
+	active_frame: int,
+	tags:      [dynamic]Tag,
 	next_uid:  u32,
 	sel:       [dynamic]u32,
 	undo:      [dynamic]Doc_State,
@@ -128,12 +138,15 @@ doc_new :: proc(kind: Doc_Kind, title: string, w, h: f32) -> ^Doc {
 	d.zoom = 1
 	d.root = node_new(d, .Group)
 	name_set(&d.root.name, "root")
+	append(&d.frames, Frame{root = d.root, duration = FRAME_DURATION, thumb_ver = -1})
 	return d
 }
 
 add_doc :: proc(d: ^Doc) {
 	append(&docs, d)
 	doc = d
+	stop_playback()
+	play_tag = -1
 }
 
 doc_display_name :: proc(d: ^Doc) -> string {
@@ -144,33 +157,95 @@ doc_display_name :: proc(d: ^Doc) -> string {
 doc_changed :: proc(d: ^Doc) {
 	d.version += 1
 	d.modified = true
+	if d.active_frame < len(d.frames) {
+		f := &d.frames[d.active_frame]
+		f.root = d.root
+		f.ver += 1
+	}
+	stop_playback() // anything that edits stops the animation
 }
 
 // Undo --------------------------------------------------------------------------------------------------
 
+// The drawing of frame `i`, as it is now.
+state_of_frame :: proc(d: ^Doc, i: int) -> Doc_State {
+	return Doc_State{w = d.w, h = d.h, root = node_clone(frame_root(d, i)), frame = i}
+}
+
 state_take :: proc(d: ^Doc) -> Doc_State {
-	return Doc_State{d.w, d.h, node_clone(d.root)}
+	return state_of_frame(d, d.active_frame)
+}
+
+// Every frame and the tags, as they are now.
+state_take_frames :: proc(d: ^Doc) -> Doc_State {
+	s := Doc_State {
+		w         = d.w,
+		h         = d.h,
+		frame     = d.active_frame,
+		structure = true,
+		frames    = make([]Frame, len(d.frames)),
+		tags      = slice.clone(d.tags[:]),
+	}
+	for f, i in d.frames {
+		s.frames[i] = Frame{root = node_clone(frame_root(d, i)), duration = f.duration, thumb_ver = -1}
+	}
+	return s
 }
 
 state_free :: proc(s: ^Doc_State) {
 	node_free(s.root)
 	s.root = nil
+	for f in s.frames do node_free(f.root)
+	delete(s.frames)
+	delete(s.tags)
+	s.frames, s.tags = nil, nil
 }
 
-// Call before a change: remembers the current state.
-history_push :: proc(d: ^Doc) {
-	append(&d.undo, state_take(d))
+history_add :: proc(d: ^Doc, s: Doc_State) {
+	append(&d.undo, s)
 	if len(d.undo) > UNDO_MAX {
 		state_free(&d.undo[0])
 		ordered_remove(&d.undo, 0)
 	}
-	for &s in d.redo do state_free(&s)
+	for &r in d.redo do state_free(&r)
 	clear(&d.redo)
 }
 
+// Call before a change: remembers the current state.
+history_push :: proc(d: ^Doc) {
+	history_add(d, state_take(d))
+}
+
+// Call before changing the frames or the tags.
+frames_history_push :: proc(d: ^Doc) {
+	history_add(d, state_take_frames(d))
+}
+
 state_restore :: proc(d: ^Doc, s: Doc_State) {
-	node_free(d.root)
-	d.root = s.root
+	if s.structure {
+		for &f, i in d.frames {
+			node_free(frame_root(d, i))
+			tex_destroy(&f.thumb)
+		}
+		clear(&d.frames)
+		append(&d.frames, ..s.frames)
+		delete(s.frames)
+		clear(&d.tags)
+		append(&d.tags, ..s.tags)
+		delete(s.tags)
+		d.active_frame = clamp(s.frame, 0, len(d.frames) - 1)
+		d.root = d.frames[d.active_frame].root
+		if play_tag >= len(d.tags) do play_tag = -1
+	} else {
+		if s.frame != d.active_frame && s.frame >= 0 && s.frame < len(d.frames) {
+			d.frames[d.active_frame].root = d.root
+			d.active_frame = s.frame
+			d.root = d.frames[s.frame].root
+			clear(&d.sel)
+		}
+		node_free(d.root)
+		d.root = s.root
+	}
 	d.w, d.h = s.w, s.h
 	// drop selection entries that no longer exist
 	k := 0
@@ -184,18 +259,26 @@ state_restore :: proc(d: ^Doc, s: Doc_State) {
 	doc_changed(d)
 }
 
-history_undo :: proc(d: ^Doc) {
-	if len(d.undo) == 0 do return
-	append(&d.redo, state_take(d))
-	s := pop(&d.undo)
+// Moves one step from one stack to the other, leaving behind what brings it back: the same kind of state, for the
+// same frame.
+@(private = "file")
+history_step :: proc(d: ^Doc, from, to: ^[dynamic]Doc_State) {
+	if len(from) == 0 do return
+	s := pop(from)
+	if s.structure {
+		append(to, state_take_frames(d))
+	} else {
+		append(to, state_of_frame(d, clamp(s.frame, 0, len(d.frames) - 1)))
+	}
 	state_restore(d, s)
 }
 
+history_undo :: proc(d: ^Doc) {
+	history_step(d, &d.undo, &d.redo)
+}
+
 history_redo :: proc(d: ^Doc) {
-	if len(d.redo) == 0 do return
-	append(&d.undo, state_take(d))
-	s := pop(&d.redo)
-	state_restore(d, s)
+	history_step(d, &d.redo, &d.undo)
 }
 
 // Tree helpers ------------------------------------------------------------------------------------------
@@ -374,7 +457,7 @@ stroke_style_of :: proc(n: ^Node) -> Stroke_Style {
 	return Stroke_Style{width = n.sw, cap = n.cap, join = n.join, miter = n.miter, dash = n.dash, ndash = n.ndash, offset = n.dash_off}
 }
 
-// Creates a styled path node with the app's current colours.
+// Creates a styled path node with the app's current colors.
 new_shape :: proc(d: ^Doc, kind: Node_Kind) -> ^Node {
 	n := node_new(d, kind)
 	n.fill = cur_fill

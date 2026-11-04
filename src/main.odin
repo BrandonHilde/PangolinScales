@@ -14,8 +14,14 @@ main :: proc() {
 	Script_Click :: struct {
 		frame: int,
 		pos:   Vec2,
+		btn:   int,
+	}
+	Script_Drag :: struct {
+		frame: int,
+		a, b:  Vec2,
 	}
 	clicks := make([dynamic]Script_Click)
+	drags := make([dynamic]Script_Drag)
 	hover: Script_Click // moves the pointer without clicking, for checking tooltips with --shot
 	args := os.args
 	for i := 1; i < len(args); i += 1 {
@@ -25,7 +31,7 @@ main :: proc() {
 			shot_path = args[i + 1]
 			i += 1
 		case a == "--scale" && i + 1 < len(args):
-			if v, ok := strconv.parse_f32(args[i + 1]); ok && v > 0 do ui_scale_arg = ui_scale_snap(int(v * 100 + 0.5))
+			if v, ok := strconv.parse_int(args[i + 1]); ok && v > 0 do ui_scale_arg = ui_scale_parse(v)
 			i += 1
 		case a == "--size" && i + 1 < len(args):
 			wh := strings.split(args[i + 1], "x", context.temp_allocator)
@@ -44,16 +50,32 @@ main :: proc() {
 		case a == "--demo":
 			demo = true
 		case a == "--clicks" && i + 1 < len(args):
-			// "frame:x,y;frame:x,y": left clicks in window pixels, for checking the interface with --shot
+			// "frame:x,y;frame:x,y": left clicks in window pixels (frame:x,y,r for a right click),
+			// for checking the interface with --shot
 			for part in strings.split(args[i + 1], ";", context.temp_allocator) {
 				fp := strings.split(part, ":", context.temp_allocator)
 				if len(fp) != 2 do continue
 				xy := strings.split(fp[1], ",", context.temp_allocator)
-				if len(xy) != 2 do continue
+				if len(xy) < 2 do continue
 				f, _ := strconv.parse_int(fp[0])
 				x, _ := strconv.parse_f32(xy[0])
 				y, _ := strconv.parse_f32(xy[1])
-				append(&clicks, Script_Click{f, {x, y}})
+				append(&clicks, Script_Click{f, {x, y}, len(xy) > 2 && xy[2] == "r" ? 1 : 0})
+			}
+			i += 1
+		case a == "--drag" && i + 1 < len(args):
+			// "frame:x0,y0,x1,y1;...": a left drag in window pixels over 8 frames
+			for part in strings.split(args[i + 1], ";", context.temp_allocator) {
+				fp := strings.split(part, ":", context.temp_allocator)
+				if len(fp) != 2 do continue
+				v := strings.split(fp[1], ",", context.temp_allocator)
+				if len(v) != 4 do continue
+				f, _ := strconv.parse_int(fp[0])
+				x0, _ := strconv.parse_f32(v[0])
+				y0, _ := strconv.parse_f32(v[1])
+				x1, _ := strconv.parse_f32(v[2])
+				y1, _ := strconv.parse_f32(v[3])
+				append(&drags, Script_Drag{f, {x0, y0}, {x1, y1}})
 			}
 			i += 1
 		case a == "--hover" && i + 1 < len(args):
@@ -95,7 +117,7 @@ main :: proc() {
 	for i := 1; i < len(args); i += 1 {
 		a := args[i]
 		if strings.has_prefix(a, "--") {
-			if a == "--shot" || a == "--scale" || a == "--size" || a == "--shot-frame" || a == "--demo-file" || a == "--clicks" || a == "--hover" || a == "--menu" do i += 1
+			if a == "--shot" || a == "--scale" || a == "--size" || a == "--shot-frame" || a == "--demo-file" || a == "--clicks" || a == "--drag" || a == "--hover" || a == "--menu" do i += 1
 			continue
 		}
 		open_path(a)
@@ -114,11 +136,19 @@ main :: proc() {
 				gfx.mouse = c.pos
 			case c.frame:
 				gfx.mouse = c.pos
-				gfx.m_pressed[0], gfx.m_down[0] = true, true
+				gfx.m_pressed[c.btn], gfx.m_down[c.btn] = true, true
 			case c.frame + 1:
 				gfx.mouse = c.pos
-				gfx.m_released[0], gfx.m_down[0] = true, false
+				gfx.m_released[c.btn], gfx.m_down[c.btn] = true, false
 			}
+		}
+		for dr in drags {
+			STEPS :: 8
+			at := frame_no - dr.frame
+			if at < -2 || at > STEPS do continue
+			gfx.mouse = dr.a + (dr.b - dr.a) * (f32(clamp(at, 0, STEPS)) / STEPS)
+			if at == 0 do gfx.m_pressed[0], gfx.m_down[0] = true, true
+			if at == STEPS do gfx.m_released[0], gfx.m_down[0] = true, false
 		}
 		if hover.frame > 0 && frame_no >= hover.frame do gfx.mouse = hover.pos
 		if gfx.quit {
@@ -127,7 +157,7 @@ main :: proc() {
 		}
 
 		sw, sh := int(gfx.pw), int(gfx.ph)
-		scale := f32(ui_scale_fit(ui_scale_wanted(), sw, sh)) / 100
+		scale := f32(ui_scale_wanted()) / 100
 		if ui.scale > 0 && scale != ui.scale do views_keep_on_screen(ui.scale, scale)
 		ui.scale = scale
 		gfx_set_scale(ui.scale)
@@ -137,6 +167,7 @@ main :: proc() {
 		ui.input_layer = (dialog.kind != .None ? 2 : 0) + (popup.open ? 1 : 0)
 		for p in gfx.dropped do open_path(p)
 		shortcuts_update()
+		playback_update(ui.dt)
 		if status_t > 0 do status_t -= ui.dt
 		if menu_arg >= 0 && frame_no == 3 do menu_request = menu_arg
 
@@ -146,7 +177,9 @@ main :: proc() {
 		oui_end_frame()
 		oui_render()
 		dialogs_run()
+		dialog_frame_end()
 		popup_run()
+		files_drag_run()
 		tooltip_draw()
 		if shot_path != "" && frame_no == shot_frame {
 			gfx.screenshot = shot_path

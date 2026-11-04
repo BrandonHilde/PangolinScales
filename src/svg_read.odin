@@ -1,12 +1,13 @@
 package pangolin
 
+import "core:fmt"
 import "core:math"
 import "core:strconv"
 import "core:strings"
 
 // ---------------------------------------------------------------------------
 // SVG reader. Supported: svg, g, path, rect, circle, ellipse, line, polyline, polygon, text / tspan, use, defs,
-// symbol, linear / radial gradients, transforms, inline style, a basic <style> sheet (tag, .class, #id), colours
+// symbol, linear / radial gradients, transforms, inline style, a basic <style> sheet (tag, .class, #id), colors
 // in all common notations. Unsupported elements (filters, masks, clip paths, images, patterns) are skipped
 // and counted in `svg_skipped`.
 // ---------------------------------------------------------------------------
@@ -112,7 +113,7 @@ parse_num_list :: proc(s: string) -> []f32 {
 	return out[:]
 }
 
-// Colours ---------------------------------------------------------------------------------------------------
+// Colors ---------------------------------------------------------------------------------------------------
 
 NAMED_COLORS := [?]struct {
 	n: string,
@@ -142,7 +143,7 @@ hex_val :: proc(c: u8) -> (int, bool) {
 	return 0, false
 }
 
-// Parses an SVG colour. Returns ok=false for unknown values.
+// Parses an SVG color. Returns ok=false for unknown values.
 parse_color :: proc(s: string, current: Color) -> (c: Color, ok: bool) {
 	t := strings.trim_space(s)
 	if len(t) == 0 do return {}, false
@@ -504,13 +505,60 @@ svg_parse :: proc(src: string) -> (d: ^Doc, ok: bool) {
 	st := rstyle_default()
 	props := element_props(&ctx, root)
 	apply_rstyle(&st, props[:])
+	first_frame := true
 	for k in root.kids {
-		if !k.is_text do build_element(&ctx, k, d.root, st)
+		if k.is_text do continue
+		dur, is_frame := xattr(k, "data-pangolin-frame")
+		if !is_frame {
+			// anything beside the frames, from another editor, goes into the first one
+			build_element(&ctx, k, d.frames[0].root, st)
+			continue
+		}
+		if !first_frame {
+			fr := node_new(d, .Group)
+			name_set(&fr.name, "root")
+			append(&d.frames, Frame{root = fr, thumb_ver = -1})
+		}
+		first_frame = false
+		f := &d.frames[len(d.frames) - 1]
+		ms, msok := strconv.parse_int(strings.trim_space(dur))
+		f.duration = msok ? max(ms, 10) : FRAME_DURATION
+		// not build_element: a frame after the first says display="none", and its group is the frame itself
+		fst := st
+		fprops := element_props(&ctx, k)
+		apply_rstyle(&fst, fprops[:])
+		for c in k.kids {
+			if !c.is_text do build_element(&ctx, c, f.root, fst)
+		}
 	}
+	if tags, ok := xattr(root, "data-pangolin-tags"); ok do tags_parse(d, tags)
 	if vb_off != {} {
-		for c in d.root.children do node_translate(c, -vb_off.x, -vb_off.y)
+		for f in d.frames {
+			for c in f.root.children do node_translate(c, -vb_off.x, -vb_off.y)
+		}
 	}
 	return d, true
+}
+
+// The tags written by tags_attr; ones that make no sense for this file's frames are left out.
+tags_parse :: proc(d: ^Doc, s: string) {
+	for part in strings.split(s, ";", context.temp_allocator) {
+		fields := strings.split(part, ":", context.temp_allocator)
+		if len(fields) != 5 do continue
+		from, fok := strconv.parse_int(fields[1])
+		to, tok := strconv.parse_int(fields[2])
+		dir, dok := strconv.parse_int(fields[3])
+		col, cok := parse_color(fmt.tprintf("#%s", fields[4]), BLACK)
+		if !fok || !tok || !dok || !cok || from < 0 || to < from || from >= len(d.frames) do continue
+		t := Tag {
+			from  = from,
+			to    = min(to, len(d.frames) - 1),
+			dir   = Tag_Dir(clamp(dir, 0, len(Tag_Dir) - 1)),
+			color = col,
+		}
+		name_set(&t.name, fields[0])
+		append(&d.tags, t)
+	}
 }
 
 collect_ids :: proc(ctx: ^Svg_Ctx, el: ^XNode) {
@@ -581,7 +629,7 @@ resolve_paint :: proc(ctx: ^Svg_Ctx, val: string, opacity: f32, st: ^Rstyle, bou
 		if el, found := ctx.ids[id]; found && (el.tag == "linearGradient" || el.tag == "radialGradient") {
 			if p, ok := build_gradient(ctx, el, opacity, bounds, st); ok do return p
 		}
-		// fallback colour after the url
+		// fallback color after the url
 		rp := strings.index_byte(t, ')')
 		if rp >= 0 && rp + 1 < len(t) {
 			if c, ok := parse_color(t[rp + 1:], st.color); ok {
@@ -741,7 +789,9 @@ apply_style_to_node :: proc(ctx: ^Svg_Ctx, n: ^Node, st: ^Rstyle) {
 
 build_element :: proc(ctx: ^Svg_Ctx, el: ^XNode, parent: ^Node, inherited: Rstyle) {
 	props := element_props(ctx, el)
-	if v, ok := prop_get(props[:], "display"); ok && v == "none" do return
+	// a hidden object stays in the document, as it does when hidden in the Objects panel
+	dv, has_display := prop_get(props[:], "display")
+	hidden := has_display && dv == "none"
 	st := inherited
 	apply_rstyle(&st, props[:])
 	d := ctx.d
@@ -764,7 +814,7 @@ build_element :: proc(ctx: ^Svg_Ctx, el: ^XNode, parent: ^Node, inherited: Rstyl
 			node_free(n)
 			return
 		}
-	case "defs", "symbol", "linearGradient", "radialGradient", "style", "title", "desc", "metadata", "namedview", "stop":
+	case "defs", "symbol", "linearGradient", "radialGradient", "style", "title", "desc", "metadata", "namedview", "stop", "animate":
 		return
 	case "path":
 		n = node_new(d, .Path)
@@ -851,6 +901,7 @@ build_element :: proc(ctx: ^Svg_Ctx, el: ^XNode, parent: ^Node, inherited: Rstyl
 			node_free(g)
 			return
 		}
+		if hidden do g.visible = false
 		append(&parent.children, g)
 		return
 	case:
@@ -862,7 +913,10 @@ build_element :: proc(ctx: ^Svg_Ctx, el: ^XNode, parent: ^Node, inherited: Rstyl
 		if v, ok := prop_get(props[:], "visibility"); ok && v == "hidden" do n.visible = false
 		apply_style_to_node(ctx, n, &st)
 	}
-	if id, ok := xattr(el, "id"); ok && id != "" do name_set(&n.name, id)
+	if hidden do n.visible = false
+	if xattr_or(el, "data-pangolin-locked") == "true" do n.locked = true
+	if nm, nok := xattr(el, "data-pangolin-name"); nok && nm != "" do name_set(&n.name, nm) // a name an id can't hold, see write_name
+	else if id, ok := xattr(el, "id"); ok && id != "" do name_set(&n.name, id)
 	else if lbl, lok := xattr(el, "label"); lok do name_set(&n.name, lbl)
 	append(&parent.children, n)
 }

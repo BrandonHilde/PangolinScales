@@ -244,7 +244,6 @@ options_text :: proc() {
 	if obutton(cur_font_name(), 120, {"Font", "The font of the text you are editing, or of new text. Click to choose from the bundled and installed fonts."}, key = "font", class = "font-btn") do font_pick_open()
 	sz := int(cur_text_size + 0.5)
 	if oslider("Size", 100, &sz, 1, 1000, {"Text size", "The size of the text you are editing, or of new text, in pixels. Drag, or use the mouse wheel. Shift steps through round values."}, "px", 2) do text_size_set(f32(sz))
-	ohint(tl.text_uid != 0 ? "Type to edit. Ctrl+Enter or a click outside finishes. Drag the text to move it" : "Click to place text, click a text object to edit it, drag one to move it")
 }
 
 // Font chooser dialog --------------------------------------------------------------------------------------

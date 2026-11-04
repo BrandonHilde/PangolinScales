@@ -81,6 +81,12 @@ Icon :: enum {
 	Close_Paths,
 	Control_Points,
 	Close_Path,
+	Film,
+	Folder,
+	Eye_Off,
+	Refresh,
+	Frame_Left,
+	Frame_Right,
 }
 
 ICON_SVG := [Icon]string {
@@ -156,6 +162,12 @@ ICON_SVG := [Icon]string {
 	.Close_Paths = #load("../assets/icons/close_paths.svg", string),
 	.Control_Points = #load("../assets/icons/control_points.svg", string),
 	.Close_Path = #load("../assets/icons/close_path.svg", string),
+	.Film = #load("../assets/icons/film.svg", string),
+	.Folder = #load("../assets/icons/folder.svg", string),
+	.Eye_Off = #load("../assets/icons/eye_off.svg", string),
+	.Refresh = #load("../assets/icons/refresh.svg", string),
+	.Frame_Left = #load("../assets/icons/frame_left.svg", string),
+	.Frame_Right = #load("../assets/icons/frame_right.svg", string),
 }
 
 @(private = "file")

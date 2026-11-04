@@ -3,26 +3,33 @@ package pangolin
 // Tracing image: a reference picture laid over the page for drawing on top of (View menu). It is not saved.
 
 trace_load :: proc(d: ^Doc) {
-	filters := [?]Filter{{"Images", "*.png;*.jpg;*.jpeg;*.bmp;*.tga;*.gif"}, {"All files", "*.*"}}
+	filters := [?]Filter{{"Images", COMMON_IMAGE_PATTERN}, {"All files", "*.*"}}
 	path, ok := native_dialog(false, "Tracing image", filters[:], "", "")
-	if !ok do return
+	if ok do trace_load_path(d, path)
+}
+
+// Makes the image at `path` the tracing image, fitted inside the page with its aspect ratio kept: centered on
+// the page, or at `at` (document units) when given.
+trace_load_path :: proc(d: ^Doc, path: string, at: Maybe(Vec2) = nil) -> bool {
 	data, rok := read_file(path)
 	if !rok {
 		message("Tracing image", "Could not read the file.")
-		return
+		return false
 	}
 	defer delete(data)
-	pix, w, h, dok := stb_decode(data)
+	pix, w, h, dok := decode_common_image(data)
 	if !dok {
 		message("Tracing image", "Unsupported image file.")
-		return
+		return false
 	}
+	defer delete(pix)
 	tex_destroy(&d.trace)
 	d.trace = tex_from_pixels(pix, w, h, .Linear)
-	// fit inside the page, keeping the aspect ratio
 	d.trace_s = min(d.w / f32(w), d.h / f32(h))
-	d.trace_pos = {(d.w - f32(w) * d.trace_s) / 2, (d.h - f32(h) * d.trace_s) / 2}
+	center := at.? or_else Vec2{d.w / 2, d.h / 2}
+	d.trace_pos = center - Vec2{f32(w), f32(h)} * d.trace_s / 2
 	d.trace_a = 0.4
+	return true
 }
 
 trace_draw :: proc(d: ^Doc, vp: Rect) {

@@ -19,17 +19,17 @@
 	--ring:        rgba(255, 255, 255, 0.07);   /* hairline ring around controls */
 	--ring-hi:     rgba(255, 255, 255, 0.16);
 	--hover:       #444855;
-	--active:      #b26438;   /* selected menu rows, pressed buttons */
-	--accent:      #f6aa68;
-	--accent-tint: rgba(246, 170, 104, 0.2);   /* toggled-on fill */
+	--active:      #2f8f83;   /* selected menu rows, pressed buttons */
+	--accent:      #5fd0c0;
+	--accent-tint: rgba(95, 208, 192, 0.2);   /* toggled-on fill */
 	--text:        #e5e7ed;
 	--text-dim:    #8c91a0;
 	--text-off:    #585c6a;
 	--viewport:    #2d2f35;   /* behind the canvas */
 	--danger:      #e66262;
 	--radius:      3px;       /* corner radius of controls */
-	--slider-fill:       rgba(246, 170, 104, 0.26);   /* sliders up to their value */
-	--slider-fill-hover: rgba(246, 170, 104, 0.38);
+	--slider-fill:       rgba(95, 208, 192, 0.26);   /* sliders up to their value */
+	--slider-fill-hover: rgba(95, 208, 192, 0.38);
 
 	font-family: "Jersey 10";
 	font-size: 14px;
@@ -47,12 +47,13 @@
 #menubar    { height: 24px; flex: none; }
 #options    { height: 30px; flex: none; }
 #body       { display: flex; flex-direction: row; flex: 1; min-height: 0; }
-#toolbar    { width: 124px; flex: none; }
+#toolbar    { width: 148px; max-width: 22vw; flex: none; }
 #center     { display: flex; flex-direction: column; flex: 1; min-width: 0; height: 100%; }
 #tabs       { height: 26px; flex: none; }
-#viewport   { flex: 1; min-height: 0; }
-#right      { width: 236px; flex: none; }
-#font       { width: 236px; flex: none; }   /* font documents only */
+#viewport   { flex: 1; min-height: 56px; }   /* in a short window the panel below gives way first */
+#timeline   { height: 150px; max-height: 35vh; flex: 0 1 auto; min-height: 24px; overflow: hidden; }
+#right      { width: 236px; max-width: 30vw; flex: none; }
+#font       { width: 236px; max-width: 30vw; flex: none; }   /* font documents only */
 #status     { height: 20px; flex: none; }
 #groups-bar { height: 24px; flex: none; }
 
@@ -77,7 +78,7 @@ statusbar label.strong { color: var(--text); }
 statusbar label.message { color: var(--accent); }
 statusbar separator    { width: 0.5px; height: 11px; background: var(--ring-hi); }
 statusbar spacer       { flex: 1; }
-#status-msg            { width: 268px; overflow: hidden; }
+#status-msg            { flex: 1; min-width: 0; white-space: pre; overflow: hidden; }   /* the rest of the bar stays at the right */
 #cursor-info           { width: 90px; height: 100%; }
 
 /* ---- controls ----------------------------------------------------------------------------- */
@@ -124,7 +125,7 @@ button.menu-title {
 }
 button.menu-title:hover { background: var(--hover); color: #ffffff; }
 button.menu-title.open  { background: var(--active); color: #ffffff; }
-#grid, #canvas-mode { margin-left: 4px; }
+#canvas-mode { margin-left: 4px; }
 #doc-name { color: var(--text-dim); margin-left: 8px; white-space: nowrap; }
 
 /* ---- document tabs ------------------------------------------------------------------------ */
@@ -291,8 +292,8 @@ optionsbar {
 	overflow: hidden;
 }
 optionsbar button.icon-btn { width: 18px; height: 14px; }
-.tool-icon  { color: var(--accent); }
-.tool-name  { color: var(--text); width: 118px; white-space: nowrap; overflow: hidden; }
+.switch-icon  { color: var(--accent); }
+.switch-title { color: var(--text); margin-right: 3px; white-space: nowrap; }
 optionsbar .dim { color: var(--text-dim); white-space: nowrap; margin-left: 4px; }
 #grid-size  { width: 46px; height: 14px; flex: none; }
 button.btn.font-btn { justify-content: flex-start; overflow: hidden; }
@@ -348,7 +349,14 @@ group-items {
 	gap: 2px;
 	padding: 5px 4px 4px 5px;
 }
-group-items.blends { flex-direction: column; }
+button.color-chip {
+	width: 24px;
+	height: 24px;
+	border-radius: var(--radius);
+	border: 0.5px solid var(--ring);
+}
+button.color-chip:hover { border-color: var(--ring-hi); }
+button.color-chip.same  { border-color: #ffffff; }
 button.icon-btn.tool { width: 24px; height: 24px; }
 button.icon-btn.quiet { background: none; border-color: var(--ring-hi); color: var(--text-dim); }
 button.icon-btn.quiet:hover { background: var(--hover); color: var(--text); }
@@ -376,7 +384,7 @@ section-line { display: block; flex: 1; height: 0.5px; background: var(--ring); 
 sidepanel row { display: flex; align-items: center; flex: none; gap: 2px; margin: 0 10px; }
 button.icon-btn.panel-btn { width: 22px; height: 18px; }
 
-#objects        { flex: 0 0 34%; min-height: 80px; margin: 0 10px 5px 10px; }
+#objects        { flex: 0 0 24%; min-height: 24px; margin: 0 10px 5px 10px; }
 #object-buttons { height: 18px; margin-bottom: 8px; }
 #properties     { flex: 1; min-height: 0; margin: 0 2px; }
 
@@ -384,3 +392,54 @@ button.icon-btn.panel-btn { width: 22px; height: 18px; }
 #glyph-buttons  { height: 16px; margin-bottom: 8px; }
 #glyph-buttons button.btn { height: 16px; }
 #font-props     { flex: 1; min-height: 0; margin: 0 2px; }
+#nav-head       { margin-top: 4px; }
+#navigator      { flex: 0 1 120px; min-height: 0; margin: 0 10px 2px 10px; }
+
+/* ---- timeline ----------------------------------------------------------------------------- */
+
+timeline {
+	display: flex;
+	flex-direction: column;
+	background: var(--panel);
+	border-top: 0.5px solid var(--border);
+}
+#timeline-bar {
+	display: flex;
+	align-items: center;
+	gap: 2px;
+	height: 24px;
+	padding: 0 6px;
+	flex: none;
+}
+button.icon-btn.tl-btn { position: relative; width: 22px; height: 17px; }
+tl-gap { display: block; width: 8px; flex: none; }
+#timeline-bar button.combo, #timeline-bar button.btn { height: 17px; margin-left: 2px; }
+.badge { position: absolute; top: 0; right: 2px; font-size: 7px; line-height: 7px; color: var(--accent); }
+#timeline-grid { flex: 1; min-height: 0; }
+#timeline.collapsed { height: 24px; }   /* panel hidden: only the bar stays */
+#bar-tools {
+	display: flex;
+	align-items: center;
+	gap: 2px;
+	flex: 1;
+	min-width: 0;
+	height: 100%;
+	overflow: hidden;
+}
+#bottom-mode { margin-left: 8px; }
+
+/* ---- file browser (shares the timeline's panel) ------------------------------------------- */
+
+#files-path { flex: 1; min-width: 0; margin-left: 6px; color: var(--text-dim); white-space: nowrap; overflow: hidden; }
+#files-grid { flex: 1; min-height: 0; }
+#files-empty {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	gap: 8px;
+	flex: 1;
+	min-height: 0;
+	background: var(--panel-dark);
+}
+#files-open { gap: 5px; height: 24px; padding: 0 12px; }

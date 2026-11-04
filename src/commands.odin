@@ -11,7 +11,7 @@ Cmd :: enum {
 	Open,
 	Save,
 	Save_As,
-	Export_PNG,
+	Export,
 	Close_Doc,
 	Quit,
 	Undo,
@@ -58,14 +58,18 @@ Cmd :: enum {
 	Text_To_Outlines,
 	Fit_View,
 	Actual_Size,
+	Zoom_200,
 	Zoom_In,
 	Zoom_Out,
 	Toggle_Grid,
 	Toggle_Snap,
 	Toggle_Canvas_Mode,
 	Toggle_Close_Paths,
-	Interface_Scale,
-	Reset_Tool_Groups,
+	Toggle_Onion,
+	Toggle_Timeline,
+	Toggle_Files,
+	Toggle_Navigator,
+	UI_Scale,
 	Page_Size,
 	Fit_Page_To_Content,
 	Trace_Load,
@@ -78,8 +82,25 @@ Cmd :: enum {
 	Font_Remove_Overlap,
 	Font_Prev_Glyph,
 	Font_Next_Glyph,
+	Frame_New,
+	Frame_Dup,
+	Frame_Del,
+	Frame_Left,
+	Frame_Right,
+	Frame_Prev,
+	Frame_Next,
+	Frame_First,
+	Frame_Last,
+	Play,
+	Tags,
+	Frame_Props,
 	Shortcuts,
 	About,
+	Ws_Manage,
+	Ws_Import,
+	Ws_Export,
+	Ws_First,
+	Ws_Last = Ws_First + WS_MAX - 1,
 }
 
 shortcut_text :: proc(c: Cmd) -> string {
@@ -88,7 +109,7 @@ shortcut_text :: proc(c: Cmd) -> string {
 	case .Open:           return "Ctrl+O"
 	case .Save:           return "Ctrl+S"
 	case .Save_As:        return "Ctrl+Shift+S"
-	case .Export_PNG:     return "Ctrl+E"
+	case .Export:         return "Ctrl+Shift+E"
 	case .Close_Doc:      return "Ctrl+W"
 	case .Quit:           return "Ctrl+Q"
 	case .Undo:           return "Ctrl+Z"
@@ -97,31 +118,40 @@ shortcut_text :: proc(c: Cmd) -> string {
 	case .Copy:           return "Ctrl+C"
 	case .Paste:          return "Ctrl+V"
 	case .Paste_In_Place: return "Ctrl+Shift+V"
-	case .Duplicate:      return "Ctrl+D"
+	case .Duplicate:      return "Ctrl+J"
 	case .Delete:         return "Del"
 	case .Select_All:     return "Ctrl+A"
-	case .Deselect:       return "Ctrl+Shift+A"
+	case .Deselect:       return "Ctrl+D"
 	case .Group:          return "Ctrl+G"
 	case .Ungroup:        return "Ctrl+Shift+G"
 	case .Raise:          return "PgUp"
 	case .Lower:          return "PgDn"
 	case .To_Front:       return "Home"
 	case .To_Back:        return "End"
-	case .Union:          return "Ctrl++"
-	case .Subtract:       return "Ctrl+-"
-	case .Intersect:      return "Ctrl+*"
+	case .Union:          return "Ctrl+Alt+="
+	case .Subtract:       return "Ctrl+Alt+-"
+	case .Intersect:      return "Ctrl+Alt+8"
 	case .Combine:        return "Ctrl+K"
 	case .Break_Apart:    return "Ctrl+Shift+K"
 	case .Object_To_Path: return "Ctrl+Shift+C"
 	case .Fit_View:       return "Ctrl+0"
 	case .Actual_Size:    return "Ctrl+1"
-	case .Zoom_In:        return "+"
-	case .Zoom_Out:       return "-"
+	case .Zoom_200:       return "Ctrl+2"
+	case .Zoom_In:        return "Ctrl+="
+	case .Zoom_Out:       return "Ctrl+-"
 	case .Toggle_Grid:    return "Ctrl+;"
 	case .Toggle_Snap:    return "Ctrl+Shift+;"
 	case .Toggle_Canvas_Mode: return "Tab"
 	case .Font_Prev_Glyph: return "["
 	case .Font_Next_Glyph: return "]"
+	case .Frame_New:      return "Alt+N"
+	case .Frame_Prev:     return ","
+	case .Frame_Next:     return "."
+	case .Frame_First:    return "Shift+,"
+	case .Frame_Last:     return "Shift+."
+	case .Play:           return "Enter"
+	case .Toggle_Onion:   return "Alt+O"
+	case .Shortcuts:      return "F1"
 	}
 	return ""
 }
@@ -131,7 +161,13 @@ clip_nodes: [dynamic]^Node
 
 run_cmd :: proc(c: Cmd) {
 	d := doc
-	if d == nil && c != .New && c != .Open && c != .Quit && c != .New_Font && c != .About && c != .Shortcuts && c != .Interface_Scale do return
+	if d == nil && c != .New && c != .Open && c != .Quit && c != .New_Font && c != .About && c != .Shortcuts && c != .UI_Scale do return
+	// a font has one frame per document, and its glyphs take their place
+	if d != nil && d.kind == .Font && c >= .Frame_New && c <= .Frame_Props do return
+	if c >= .Ws_First && c <= .Ws_Last {
+		workspace_apply_index(int(c) - int(Cmd.Ws_First))
+		return
+	}
 	switch c {
 	case .None:
 	case .New:
@@ -146,8 +182,12 @@ run_cmd :: proc(c: Cmd) {
 		doc_save(d, false)
 	case .Save_As:
 		doc_save(d, true)
-	case .Export_PNG:
-		dialog_open(.Export_PNG)
+	case .Export:
+		if d.kind == .Font {
+			font_export(d)
+		} else {
+			dialog_open(.Export)
+		}
 	case .Close_Doc:
 		doc_close(d)
 	case .Quit:
@@ -234,22 +274,29 @@ run_cmd :: proc(c: Cmd) {
 		view_fit(d, view_vp)
 	case .Actual_Size:
 		view_actual(d, view_vp)
+	case .Zoom_200:
+		view_actual(d, view_vp, 2)
 	case .Zoom_In:
 		zoom_at(d, {f32(view_vp.x + view_vp.w / 2), f32(view_vp.y + view_vp.h / 2)}, 1.25)
 	case .Zoom_Out:
 		zoom_at(d, {f32(view_vp.x + view_vp.w / 2), f32(view_vp.y + view_vp.h / 2)}, 0.8)
 	case .Toggle_Grid:
-		show_grid = !show_grid
+		switch_set(.Grid, !show_grid)
 	case .Toggle_Snap:
-		snap_grid = !snap_grid
+		switch_set(.Snap, !snap_grid)
+	case .Toggle_Onion:
+		switch_set(.Onion, !onion)
+	case .Toggle_Timeline:
+		bottom_mode_set(bottom_mode == .Animation ? .Hidden : .Animation)
+	case .Toggle_Files:
+		bottom_mode_set(bottom_mode == .Files ? .Hidden : .Files)
+	case .Toggle_Navigator:
+		show_navigator = !show_navigator
 	case .Toggle_Canvas_Mode:
 		canvas_mode = !canvas_mode
 	case .Toggle_Close_Paths:
 		close_open_paths = !close_open_paths
 		set_status(close_open_paths ? "Open paths can now be closed" : "Open paths now stay open")
-	case .Reset_Tool_Groups:
-		tool_groups_default()
-		set_status("Tool groups reset")
 	case .Page_Size:
 		dialog_open(.Page_Size)
 	case .Fit_Page_To_Content:
@@ -274,12 +321,58 @@ run_cmd :: proc(c: Cmd) {
 		font_select_glyph(d, d.font.cur - 1)
 	case .Font_Next_Glyph:
 		font_select_glyph(d, d.font.cur + 1)
-	case .Interface_Scale:
-		dialog_open(.Interface_Scale)
+	case .Frame_New:
+		frame_add(d, false)
+	case .Frame_Dup:
+		frame_add(d, true)
+	case .Frame_Del:
+		if !frame_delete(d) do set_status("A document always keeps one frame")
+	case .Frame_Left:
+		frame_move_to(d, d.active_frame, d.active_frame - 1)
+	case .Frame_Right:
+		frame_move_to(d, d.active_frame, d.active_frame + 1)
+	case .Frame_Prev:
+		stop_playback()
+		n := len(d.frames)
+		set_frame((d.active_frame + n - 1) % n)
+	case .Frame_Next:
+		stop_playback()
+		set_frame((d.active_frame + 1) % len(d.frames))
+	case .Frame_First:
+		stop_playback()
+		set_frame(0)
+	case .Frame_Last:
+		stop_playback()
+		set_frame(len(d.frames) - 1)
+	case .Play:
+		if playing {
+			stop_playback()
+		} else if len(d.frames) < 2 {
+			set_status("Add a frame to have something to play")
+		} else {
+			tools_cancel()
+			playing = true
+			play_timer = 0
+			play_dir = 1
+		}
+	case .Tags:
+		tags_dialog_opened(d)
+		dialog_open(.Tags)
+	case .Frame_Props:
+		dialog_open(.Frame_Props)
+	case .UI_Scale:
+		dialog_open(.UI_Scale)
 	case .Shortcuts:
 		dialog_open(.Shortcuts)
 	case .About:
 		dialog_open(.About)
+	case .Ws_Manage:
+		dialog_open(.Workspaces)
+	case .Ws_Import:
+		workspace_import()
+	case .Ws_Export:
+		workspace_export()
+	case .Ws_First ..= .Ws_Last:
 	}
 }
 
@@ -347,6 +440,8 @@ doc_close :: proc(d: ^Doc) {
 
 doc_close_now :: proc(d: ^Doc) {
 	tools_cancel()
+	stop_playback()
+	play_tag = -1
 	for x, i in docs {
 		if x == d {
 			ordered_remove(&docs, i)
@@ -398,49 +493,42 @@ cmd_copy :: proc(d: ^Doc) {
 }
 
 cmd_paste :: proc(d: ^Doc, in_place: bool) {
-	history_push(d)
-	clear(&d.sel)
 	added := 0
 	// prefer SVG text on the system clipboard (from another app or an earlier copy)
 	txt := gfx_clipboard_get()
 	if strings.contains(txt, "<svg") {
 		if src, ok := svg_parse(txt); ok {
 			defer doc_free(src)
-			for c in src.root.children {
-				n := node_clone(c)
-				renumber(d, n)
-				append(&d.root.children, n)
-				append(&d.sel, n.uid)
-				added += 1
-			}
+			added = doc_add_objects(d, src.root.children[:])
 		}
 	}
-	if added == 0 {
-		for c in clip_nodes {
-			n := node_clone(c)
-			renumber(d, n)
-			append(&d.root.children, n)
-			append(&d.sel, n.uid)
-			added += 1
-		}
-	}
-	if added == 0 {
-		if len(d.undo) > 0 {
-			s := pop(&d.undo)
-			state_free(&s)
-		}
-		return
-	}
-	if !in_place {
-		// nudge into the view centre
-		b := sel_bounds(d)
-		if !bounds_empty(b) {
-			c := to_doc(d, {f32(view_vp.x + view_vp.w / 2), f32(view_vp.y + view_vp.h / 2)})
-			bc := bounds_center(b)
-			for n in sel_nodes(d) do node_translate(n, c.x - bc.x, c.y - bc.y)
-		}
-	}
+	if added == 0 do added = doc_add_objects(d, clip_nodes[:])
+	if added == 0 do return
+	// otherwise into the middle of the view
+	if !in_place do sel_center_at(d, to_doc(d, {f32(view_vp.x + view_vp.w / 2), f32(view_vp.y + view_vp.h / 2)}))
 	doc_changed(d)
+}
+
+// Adds copies of `nodes` to the page as one undo step and selects them. Returns how many; none adds no undo step.
+doc_add_objects :: proc(d: ^Doc, nodes: []^Node) -> int {
+	if len(nodes) == 0 do return 0
+	history_push(d)
+	clear(&d.sel)
+	for c in nodes {
+		n := node_clone(c)
+		renumber(d, n)
+		append(&d.root.children, n)
+		append(&d.sel, n.uid)
+	}
+	return len(nodes)
+}
+
+// Moves the selection so its bounds are centered on `c`.
+sel_center_at :: proc(d: ^Doc, c: Vec2) {
+	b := sel_bounds(d)
+	if bounds_empty(b) do return
+	bc := bounds_center(b)
+	for n in sel_nodes(d) do node_translate(n, c.x - bc.x, c.y - bc.y)
 }
 
 // Gives a cloned subtree fresh ids.
@@ -451,6 +539,12 @@ renumber :: proc(d: ^Doc, n: ^Node) {
 }
 
 doc_free :: proc(d: ^Doc) {
+	for &f, i in d.frames {
+		if i != d.active_frame do node_free(f.root)
+		tex_destroy(&f.thumb)
+	}
+	delete(d.frames)
+	delete(d.tags)
 	node_free(d.root)
 	for &s in d.undo do state_free(&s)
 	for &s in d.redo do state_free(&s)

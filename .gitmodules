@@ -1,3 +1,6 @@
 [submodule "libs/odinui"]
 	path = libs/odinui
 	url = https://gitlab.com/patrick.pixelshuffle/odinui.git
+[submodule "libs/shared"]
+	path = libs/shared
+	url = https://github.com/BrandonHilde/PangolinShared.git

@@ -5,7 +5,7 @@ import "core:fmt"
 Dialog_Kind :: enum {
 	None,
 	New_Doc,
-	Export_PNG,
+	Export,
 	Page_Size,
 	Add_Glyphs,
 	Confirm_Close,
@@ -14,7 +14,10 @@ Dialog_Kind :: enum {
 	About,
 	Group_Rename,
 	Font,
-	Interface_Scale,
+	UI_Scale,
+	Tags,
+	Frame_Props,
+	Workspaces,
 }
 
 Dialog :: struct {
@@ -50,14 +53,18 @@ dialog_open :: proc(k: Dialog_Kind) {
 	switch k {
 	case .New_Doc:
 		dialog.a, dialog.b = 1024, 768
-	case .Export_PNG:
+	case .Export:
 		dialog.a = 100
 		dialog.flag = true
+	case .Frame_Props:
+		dialog.a = doc.frames[doc.active_frame].duration
+	case .Workspaces:
+		ws_refresh()
 	case .Page_Size:
 		dialog.a, dialog.b = int(doc.w), int(doc.h)
 	case .Add_Glyphs:
 		dialog.a = 0
-	case .None, .Confirm_Close, .Message, .Shortcuts, .About, .Group_Rename, .Font, .Interface_Scale:
+	case .None, .Confirm_Close, .Message, .Shortcuts, .About, .Group_Rename, .Font, .UI_Scale, .Tags:
 	}
 }
 
@@ -69,23 +76,6 @@ message :: proc(title, text: string) {
 
 dialog_close :: proc() {
 	dialog.kind = .None
-}
-
-// Draws the dim background and the window frame; returns the content area.
-dialog_frame :: proc(title: string, w, h: i32) -> Rect {
-	ui.layer = 2
-	fill_rect(Rect{0, 0, i32(ui.w), i32(ui.h)}, Color{6, 7, 10, 130})
-	x := (i32(ui.w) - w) / 2
-	y := (i32(ui.h) - h) / 2
-	draw_shadow(f32(x), f32(y + 6), f32(w), f32(h), 7, 22, Color{0, 0, 0, 190})
-	draw_rrect(f32(x), f32(y), f32(w), f32(h), 7, C_PANEL)
-	clip_begin(Rect{x, y, w, 20})
-	draw_rrect(f32(x), f32(y), f32(w), 40, 7, C_PANEL_DK)
-	clip_end()
-	hline(x, y + 20, w, C_BORDER)
-	draw_rrect_outline(f32(x), f32(y), f32(w), f32(h), 7, C_RING_HI)
-	text(x + 12, y + (20 - FONT_CAP) / 2, title, C_TEXT)
-	return Rect{x + 12, y + 26, w - 24, h - 34}
 }
 
 // OK / Cancel row at the bottom of the content area.
@@ -107,34 +97,6 @@ dialog_buttons :: proc(c: Rect, ok_tip: string, ok_label := "OK", cancel_label :
 row_int :: proc(c: Rect, y: i32, name: string, v: ^int, lo, hi: int, desc: string) {
 	tip_text(c.x, y + 3, name, C_TEXT, {name, desc})
 	field_int(Rect{c.x + 110, y, 70, 14}, v, lo, hi, {name, desc})
-}
-
-// The interface takes the new size when the slider is let go: this dialog would otherwise move out from under the pointer.
-// dialog.a is the slider's value and dialog.flag is set while it is being dragged.
-dlg_interface_scale :: proc() {
-	c := dialog_frame("Interface Scale", 300, 120)
-	SIZE_TIP :: "How large the whole interface is drawn: its text, icons and panels. Your drawing is not affected. Drag, or use the mouse wheel."
-	wanted := ui_scale_wanted()
-	if !dialog.flag do dialog.a = wanted
-	tip_text(c.x, c.y + 3, "Size", C_TEXT, {"Interface size", SIZE_TIP})
-	if slider(Rect{c.x + 110, c.y, c.w - 110, 14}, &dialog.a, UI_SCALE_MIN, UI_SCALE_MAX, "", {"Interface size", SIZE_TIP}, "%", step = UI_SCALE_STEP) {
-		dialog.flag = true
-	}
-	if dialog.flag && !ui.down[0] {
-		dialog.flag = false
-		ui_scale_arg, ui_scale_pref = 0, dialog.a
-		wanted = dialog.a
-	}
-	automatic := ui_scale_arg == 0 && ui_scale_pref == 0 && !dialog.flag
-	if checkbox(c.x, c.y + 22, "Size automatically", &automatic, {"Size automatically", "On: the interface sizes itself to the screen the window is on, including when you move it to another screen. Moving the slider turns this off and keeps the size you chose."}) {
-		ui_scale_arg, ui_scale_pref = 0, 0
-		if !automatic do ui_scale_pref = wanted
-	}
-	applied := int(ui.scale * 100 + 0.5)
-	note := automatic ? "Follows the screen this window is on." : "Stays this size on every screen."
-	if !dialog.flag && applied < wanted do note = fmt.tprintf("This window only has room for %d%%.", applied)
-	text(c.x, c.y + 42, note, C_TEXT_DIM)
-	if ok, _ := dialog_buttons(c, "Close this window (Enter or Esc).", "Close", ""); ok do dialog_close()
 }
 
 dialogs_run :: proc() {
@@ -164,25 +126,8 @@ dialogs_run :: proc() {
 		} else if cancel {
 			dialog_close()
 		}
-	case .Export_PNG:
-		c := dialog_frame("Export PNG", 300, 130)
-		SCALE_TIP :: "The image size compared to the page: 100% is one pixel per document unit. Higher is sharper and a larger file."
-		tip_text(c.x, c.y + 3, "Scale", C_TEXT, {"Scale", SCALE_TIP})
-		slider(Rect{c.x + 110, c.y, c.w - 110, 14}, &dialog.a, 10, 800, "", {"Scale", SCALE_TIP}, "%")
-		w, h := int(doc.w * f32(dialog.a) / 100 + 0.5), int(doc.h * f32(dialog.a) / 100 + 0.5)
-		tip_text(c.x, c.y + 24, fmt.tprintf("Size: %d x %d px", w, h), C_TEXT_DIM, {"Image size", "The size the exported image will be at this scale."})
-		checkbox(c.x, c.y + 42, "Transparent background", &dialog.flag, {"Transparent background", "On: areas with nothing drawn are see-through in the image. Off: the page background is included."})
-		ok, cancel := dialog_buttons(c, "Choose where to save the PNG image (Enter).", "Export")
-		if ok {
-			initial := fmt.tprintf("%s.png", name_str(&doc.title))
-			if path, pok := native_dialog(true, "Export PNG", FILTERS_PNG[:], "png", initial); pok {
-				if png_save(doc, path, f32(dialog.a) / 100, !dialog.flag) do set_status("Exported")
-				else do message("Export", "Could not write the file.")
-			}
-			if dialog.kind == .Export_PNG do dialog_close()
-		} else if cancel {
-			dialog_close()
-		}
+	case .Export:
+		dlg_export()
 	case .Page_Size:
 		c := dialog_frame("Page Size", 280, 110)
 		row_int(c, c.y, "Width", &dialog.a, 1, 20000, "The new width of the page in document units. Objects stay where they are.")
@@ -230,33 +175,40 @@ dialogs_run :: proc() {
 		text_clipped(Rect{c.x, c.y + 2, c.w, 14}, name_str(&dialog.msg_text), C_TEXT)
 		if ok, _ := dialog_buttons(c, "Close this message (Enter).", "OK", ""); ok do dialog_close()
 	case .Shortcuts:
-		c := dialog_frame("Keyboard Shortcuts", 520, 372)
+		c := dialog_frame("Keyboard Shortcuts", 540, 470)
 		lines := [?][2]string {
 			{"1 - 6 (tool groups)", "pick a group, press again to cycle its tools"},
-			{"V / A / B / P / F", "select / node edit / control points / pen / freehand"},
-			{"R / E / L / T / I", "rectangle / ellipse / line / text / eyedropper"},
+			{"V / A / Shift+A / P / B", "select / node edit / control points / pen / freehand"},
+			{"R / O / L / T / I", "rectangle / ellipse / line / text / eyedropper"},
 			{"H, Space (hold), middle drag", "pan"},
-			{"Wheel / Ctrl+0 / Ctrl+1", "zoom / fit page / actual size"},
+			{"Wheel, Ctrl+= / Ctrl+-", "zoom in and out"},
+			{"Ctrl+0 / Ctrl+1 / Ctrl+2", "fit to window / 100% / 200%"},
 			{"Ctrl+Z / Ctrl+Shift+Z", "undo / redo"},
-			{"Ctrl+C / X / V / D", "copy / cut / paste / duplicate"},
+			{"Ctrl+C / X / V / J", "copy / cut / paste / duplicate"},
+			{"Ctrl+A / Ctrl+D", "select all / deselect"},
 			{"Ctrl+G / Ctrl+Shift+G", "group / ungroup"},
 			{"PgUp / PgDn / Home / End", "raise / lower / to front / to back"},
-			{"Ctrl++ / Ctrl+- / Ctrl+*", "union / subtract / intersect"},
+			{"Ctrl+Alt+= / - / 8", "union / subtract / intersect"},
 			{"Ctrl+K / Ctrl+Shift+K", "combine / break apart"},
 			{"Ctrl+Shift+C", "object to path"},
 			{"Ctrl+; / Ctrl+Shift+;", "grid / snap to grid"},
 			{"Shift while dragging", "keep proportions, 15 degree steps"},
-			{"Alt while dragging", "draw from the centre / break handle symmetry"},
+			{"Alt while dragging", "draw from the center / break handle symmetry"},
 			{"Pen: Enter / Esc / Backspace", "finish / finish / remove last point"},
 			{"Node tool: Del, C, S, dbl-click", "delete node / corner / smooth / add node"},
 			{"Arrows (Shift)", "nudge 1 (10) units"},
 			{"Tab", "canvas mode: only the drawing and the tool groups"},
-			{"Ctrl+S / Ctrl+Shift+S / Ctrl+E", "save / save as / export PNG"},
+			{"Alt+N", "new frame"},
+			{", / . (Shift: first / last)", "previous / next frame"},
+			{"Enter", "play or stop the animation"},
+			{"Alt+O", "onion skin"},
+			{"Ctrl+S / Ctrl+Shift+S / Ctrl+Shift+E", "save / save as / export"},
+			{"F1", "this list"},
 		}
 		y := c.y
 		for l in lines {
 			text(c.x, y, l[0], C_ACCENT)
-			text(c.x + 200, y, l[1], C_TEXT)
+			text(c.x + 220, y, l[1], C_TEXT)
 			y += 14
 		}
 		if ok, _ := dialog_buttons(c, "Close this list (Enter or Esc).", "Close", ""); ok do dialog_close()
@@ -272,7 +224,14 @@ dialogs_run :: proc() {
 		dlg_group_rename()
 	case .Font:
 		dlg_font()
-	case .Interface_Scale:
-		dlg_interface_scale()
+	case .UI_Scale:
+		dlg_ui_scale()
+	case .Tags:
+		dlg_tags()
+		if dialog.kind != .Tags do tags_dialog_closed(doc)
+	case .Frame_Props:
+		dlg_frame_props()
+	case .Workspaces:
+		dlg_workspaces()
 	}
 }

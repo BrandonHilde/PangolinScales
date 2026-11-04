@@ -32,7 +32,10 @@ panels_init :: proc() {
 		logo_draw(r.x, r.y + (r.h - LOGO_SIZE) / 2, 1)
 		tip_area(r, "logo", {"Pangolin Scales", "An SVG and font editor. Help > About has the details."})
 	})
-	oui_slot_register("viewport", proc(r: Rect, _: int) {panel_viewport(r)})
+	oui_slot_register("viewport", proc(r: Rect, _: int) {
+		canvas_vp = r
+		panel_viewport(r)
+	})
 	oui_slot_register("groups_bar", proc(r: Rect, _: int) {panel_groups_bar(r)})
 	oui_slot_register("paint_chips", proc(r: Rect, _: int) {panel_paint_chips(r)})
 	oui_slot_register("cursor_info", proc(r: Rect, _: int) {panel_cursor_info(r)})
@@ -45,6 +48,12 @@ panels_init :: proc() {
 	oui_slot_register("properties", proc(r: Rect, _: int) {panel_properties(r)})
 	oui_slot_register("glyph_grid", proc(r: Rect, _: int) {panel_glyph_grid(doc, r)})
 	oui_slot_register("font_props", proc(r: Rect, _: int) {panel_font_props(doc, r)})
+	oui_slot_register("navigator", proc(r: Rect, _: int) {panel_navigator(r)})
+	oui_slot_register("timeline_grid", proc(r: Rect, _: int) {panel_timeline_grid(r)})
+	oui_slot_register("files_grid", proc(r: Rect, _: int) {
+		ui.layer = 0
+		panel_files_grid(r)
+	})
 }
 
 main_ui :: proc() {
@@ -62,6 +71,7 @@ main_ui :: proc() {
 	oui.element(uictx, "center", "column", {id = "center"})
 	panel_tabs()
 	oui_slot("viewport", "viewport")
+	panel_timeline()
 	oui.end(uictx)
 	if doc.kind == .Font do panel_font()
 	panel_right()
@@ -90,8 +100,8 @@ panel_viewport :: proc(vp: Rect) {
 
 // Menu bar -----------------------------------------------------------------------------------------------
 
-MENU_TITLES_SVG := [?]string{"File", "Edit", "Object", "Path", "Text", "View", "Help"}
-MENU_TITLES_FONT := [?]string{"File", "Edit", "Object", "Path", "Text", "Font", "View", "Help"}
+MENU_TITLES_SVG := [?]string{"File", "Edit", "Object", "Path", "Text", "Frame", "View", "Workspaces", "Help"}
+MENU_TITLES_FONT := [?]string{"File", "Edit", "Object", "Path", "Text", "Font", "View", "Workspaces", "Help"}
 
 menu_titles :: proc() -> []string {
 	if doc != nil && doc.kind == .Font do return MENU_TITLES_FONT[:]
@@ -110,13 +120,13 @@ menu_build :: proc(idx: int) {
 		item("Save", cmd = .Save)
 		item("Save As...", cmd = .Save_As)
 		if doc.kind == .Svg {
-			item("Export PNG...", cmd = .Export_PNG)
+			item("Export...", cmd = .Export)
 		} else {
 			item("Export TrueType...", cmd = .Font_Export)
 		}
 		popup_sep()
 		item("Close", cmd = .Close_Doc)
-		item("Quit", cmd = .Quit)
+		item("Exit", cmd = .Quit)
 	case "Edit":
 		item("Undo", cmd = .Undo)
 		item("Redo", cmd = .Redo)
@@ -186,28 +196,61 @@ menu_build :: proc(idx: int) {
 		item("Next Glyph", cmd = .Font_Next_Glyph)
 		popup_sep()
 		item("Export TrueType...", cmd = .Font_Export)
+	case "Frame":
+		item("New Frame", cmd = .Frame_New)
+		item("Duplicate Frame", cmd = .Frame_Dup)
+		item("Delete Frame", cmd = .Frame_Del, enabled = len(doc.frames) > 1)
+		popup_sep()
+		item("Move Left", cmd = .Frame_Left, enabled = doc.active_frame > 0)
+		item("Move Right", cmd = .Frame_Right, enabled = doc.active_frame < len(doc.frames) - 1)
+		popup_sep()
+		item("Frame Properties...", cmd = .Frame_Props)
+		item("Tags...", cmd = .Tags)
+		popup_sep()
+		item(playing ? "Pause" : "Play", cmd = .Play)
+		item("Next Frame", cmd = .Frame_Next)
+		item("Previous Frame", cmd = .Frame_Prev)
+		item("First Frame", cmd = .Frame_First)
+		item("Last Frame", cmd = .Frame_Last)
+		popup_sep()
+		item("Onion Skin", cmd = .Toggle_Onion, checked = onion)
+	case "Workspaces":
+		ws_refresh()
+		for e, i in ws_entries {
+			if i == len(WS_BUILTIN_NAMES) do popup_sep()
+			item(e.name, cmd = Cmd(int(Cmd.Ws_First) + i), checked = e.name == ws_current, tip = e.builtin >= 0 ? WS_BUILTIN_HELP[e.builtin] : "")
+		}
+		popup_sep()
+		item("Manage Workspaces...", cmd = .Ws_Manage)
+		item("Import Workspace...", cmd = .Ws_Import)
+		item("Export Workspace...", cmd = .Ws_Export)
 	case "View":
 		item("Zoom In", cmd = .Zoom_In)
 		item("Zoom Out", cmd = .Zoom_Out)
-		item("Fit", cmd = .Fit_View)
-		item("Actual Size", cmd = .Actual_Size)
+		item("Fit to Window", cmd = .Fit_View)
+		item("100%", cmd = .Actual_Size)
+		item("200%", cmd = .Zoom_200)
 		popup_sep()
 		item("Grid", cmd = .Toggle_Grid, checked = show_grid)
 		item("Snap to Grid", cmd = .Toggle_Snap, checked = snap_grid)
+		popup_sep()
 		item("Canvas Mode", cmd = .Toggle_Canvas_Mode, checked = canvas_mode)
-		item("Interface Scale...", cmd = .Interface_Scale)
+		if doc.kind == .Svg do item("Timeline", cmd = .Toggle_Timeline, checked = bottom_mode == .Animation)
+		item("File Browser", cmd = .Toggle_Files, checked = bottom_mode == .Files)
+		item("Navigator", cmd = .Toggle_Navigator, checked = show_navigator)
+		item("UI Scale...", cmd = .UI_Scale)
 		popup_sep()
 		item("Load Tracing Image...", cmd = .Trace_Load)
 		item("Tracing Image More Visible", cmd = .Trace_More)
 		item("Tracing Image Less Visible", cmd = .Trace_Less)
 		item("Clear Tracing Image", cmd = .Trace_Clear)
-		popup_sep()
-		item("Reset Tool Groups", cmd = .Reset_Tool_Groups)
 	case "Help":
 		item("Keyboard Shortcuts", cmd = .Shortcuts)
 		item("About", cmd = .About)
 	}
 }
+
+canvas_vp: Rect // where the document is shown
 
 menu_request := -1 // a menu to open (--menu)
 
@@ -243,9 +286,6 @@ panel_menubar :: proc() {
 		}
 	}
 	oui.element_leaf(uictx, "spacer", "spacer")
-	if c, _ := oui_icon_button("grid", .Grid, cmd_tip("Grid", .Toggle_Grid), {lit = show_grid, enabled = true}); c {
-		run_cmd(.Toggle_Grid)
-	}
 	if c, _ := oui_icon_button("canvas-mode", .Canvas_Mode, cmd_tip("Canvas mode", .Toggle_Canvas_Mode), {lit = canvas_mode, enabled = true}); c {
 		run_cmd(.Toggle_Canvas_Mode)
 	}
@@ -255,7 +295,7 @@ panel_menubar :: proc() {
 // Tabs ---------------------------------------------------------------------------------------------------
 
 panel_tabs :: proc() {
-	oui.element(uictx, "tabs", "tabbar", {id = "tabs"})
+	tabs_rect = oui_rect(oui.element(uictx, "tabs", "tabbar", {id = "tabs"}))
 	defer oui.end(uictx)
 	close_doc: ^Doc
 	switch_to: ^Doc
@@ -280,6 +320,8 @@ panel_tabs :: proc() {
 		doc_close(close_doc)
 	} else if switch_to != nil && switch_to != doc {
 		tools_cancel()
+		stop_playback()
+		play_tag = -1
 		doc = switch_to
 		render_invalidate()
 	}
@@ -290,22 +332,24 @@ panel_tabs :: proc() {
 panel_toolbar :: proc() {
 	oui.element(uictx, "toolbar", "toolbar", {id = "toolbar"})
 	defer oui.end(uictx)
-	rem_g, rem_t, rem_o := -1, -1, -1
+	rem_g, rem_t, rem_o, rem_c := -1, -1, -1, -1
 	OP_ITEM :: 1000 // popup values of path operations: OP_ITEM + index into PATH_OPS
+	ADD_FILL_COLOR :: 900
+	ADD_SWATCHES :: 901
 	cg := current_group()
 	for &g, gi in tool_groups {
 		oui.element(uictx, fmt.tprintf("g%d", gi), "tool-group")
 		// header: the name on the left, the hotkey as a keycap on the right
 		// (click the keycap for options; right-click the header for rename / remove)
 		hdr := oui.element(uictx, "head", "group-head")
-		oui_tip(hdr, {group_title(&g), "A tool group: tools and path operations kept together. Right-click to rename or remove it."})
+		oui_tip(hdr, {group_title(&g), "A tool group: tools, switches and path operations kept together, or colors. Right-click to rename or remove it."})
 		oui.label(uictx, "title", group_title(&g), {class = "group-title"})
 		waiting := group_key_wait == gi
 		label := waiting ? "..." : (g.key == .KEY_NULL ? "-" : key_name(g.key))
 		kc := oui.button_begin(uictx, "key", {class = label == "-" ? "keycap none" : "keycap", checked = waiting})
 		oui.label(uictx, "t", label)
 		oui.end(uictx)
-		oui_tip(kc, {"Group hotkey", "Press this key to pick the group's last tool, and again to step through its tools. A group with only operations repeats the last one. Click to change the key, rename or remove the group."})
+		oui_tip(kc, {"Group hotkey", "Press this key to pick the group's last tool, and again to step through its tools. A group with only operations repeats the last one, and a color group steps through its colors. Click to change the key, rename or remove the group."})
 		oui.end(uictx)
 		bid := make_id({}, fmt.tprintf("grpbadge%d", gi))
 		if kc.clicked {
@@ -341,7 +385,7 @@ panel_toolbar :: proc() {
 		}
 		oui.element(uictx, "items", "group-items")
 		for tool, ti in g.tools {
-			lit := cur_tool == tool && cg == gi
+			lit := tool_is_toggle(tool) ? tool_toggle_on(tool) : cur_tool == tool && cg == gi
 			clicked, bn := oui_icon_button(fmt.tprintf("t%d", int(tool)), TOOL_ICONS[tool], tool_tip(tool), {class = "tool", lit = lit, enabled = true, icon_lg = true})
 			if clicked {
 				select_tool_in_group(tool, gi)
@@ -358,30 +402,59 @@ panel_toolbar :: proc() {
 				rem_g, rem_o = gi, oi
 			}
 		}
-		if len(g.tools) < len(Tool) || len(g.ops) < len(PATH_OPS) {
+		for c, ci in g.colors {
+			class := group_color_is_current(c) ? "color-chip same" : "color-chip"
+			cn := oui.button_begin(uictx, fmt.tprintf("c%d", ci), {class = class, style = fmt.tprintf("background:#%02x%02x%02x", c.r, c.g, c.b)})
+			oui.end(uictx)
+			oui_tip(cn, {color_hex(c), "Click to make this the fill color, of the selection or for new shapes. Right-click to take it out of this group. The group's hotkey steps through its colors."})
+			if cn.clicked {
+				group_color_pick(c)
+			} else if cn.hovered && ui.pressed[1] && !popup.open {
+				rem_g, rem_c = gi, ci
+			}
+		}
+		is_colors := len(g.colors) > 0
+		is_tools := len(g.tools) > 0 || len(g.ops) > 0
+		can_add := is_colors ? len(g.colors) < MAX_GROUP_COLORS : len(g.tools) < len(Tool) || len(g.ops) < len(PATH_OPS)
+		if can_add {
 			pid := make_id({}, fmt.tprintf("grpadd%d", gi))
-			add_clicked, add_node := oui_icon_button("add", .Plus, {"Add to group", "Add a tool or path operation to this group. To take one out again, right-click its button."}, {class = "tool quiet", enabled = true, icon_lg = true})
+			add_clicked, add_node := oui_icon_button("add", .Plus, {"Add to group", "Add a tool, switch or path operation to this group, or colors. A group holds either colors or the others. To take one out again, right-click it."}, {class = "tool quiet", enabled = true, icon_lg = true})
 			if add_clicked {
 				popup_begin(pid, oui_rect(add_node))
 				popup_grid(4)
-				for tool in Tool {
-					if !tool_group_has(&g, tool) do popup_item_icon(TOOL_NAMES[tool], int(tool), TOOL_ICONS[tool], TOOL_HELP[tool])
-				}
-				if len(g.ops) < len(PATH_OPS) {
-					popup_sep()
-					for op, i in PATH_OPS {
-						if !group_has_op(&g, op.cmd) do popup_item_icon(path_op_tip(op), OP_ITEM + i, op.icon, cmd_help(op.cmd))
+				if !is_colors {
+					for tool in Tool {
+						if !tool_group_has(&g, tool) do popup_item_icon(TOOL_NAMES[tool], int(tool), TOOL_ICONS[tool], TOOL_HELP[tool])
 					}
+					if len(g.ops) < len(PATH_OPS) {
+						popup_sep()
+						for op, i in PATH_OPS {
+							if !group_has_op(&g, op.cmd) do popup_item_icon(path_op_tip(op), OP_ITEM + i, op.icon, cmd_help(op.cmd))
+						}
+					}
+				}
+				if !is_tools {
+					if !is_colors do popup_sep()
+					if fill := current_fill_color(); fill.a > 0 {
+						popup_item_swatch("Fill color", ADD_FILL_COLOR, fill)
+						popup.items[len(popup.items) - 1].tip = "Add the current fill color to this group."
+					}
+					popup_item("All swatches", ADD_SWATCHES, tip = "Add all the colors of the swatches in Properties to this group.")
 				}
 			}
 			if ui.popup_result_id == pid {
 				v := ui.popup_result_val
-				if v >= OP_ITEM {
+				switch {
+				case v >= OP_ITEM:
 					append(&g.ops, PATH_OPS[v - OP_ITEM].cmd)
 					if len(g.ops) == 1 do g.last_op = g.ops[0]
-				} else {
+				case v == ADD_FILL_COLOR:
+					group_add_colors(&g, {current_fill_color()})
+				case v == ADD_SWATCHES:
+					group_add_colors(&g, swatches_list())
+				case:
 					append(&g.tools, Tool(v))
-					if len(g.tools) == 1 do g.last = Tool(v)
+					if !tool_is_toggle(Tool(v)) && (len(g.tools) == 1 || tool_is_toggle(g.last) || !tool_group_has(&g, g.last)) do g.last = Tool(v)
 				}
 				ui.popup_result_id = 0
 			}
@@ -394,10 +467,13 @@ panel_toolbar :: proc() {
 			ordered_remove(&tool_groups[rem_g].tools, rem_t)
 		} else if rem_o >= 0 {
 			ordered_remove(&tool_groups[rem_g].ops, rem_o)
+		} else if rem_c >= 0 {
+			ordered_remove(&tool_groups[rem_g].colors, rem_c)
 		} else {
 			active_group = -1 // indices shift
 			delete(tool_groups[rem_g].tools)
 			delete(tool_groups[rem_g].ops)
+			delete(tool_groups[rem_g].colors)
 			ordered_remove(&tool_groups, rem_g)
 			group_key_wait = -1
 		}
@@ -432,10 +508,10 @@ panel_paint_chips :: proc(r: Rect) {
 	if prop_target == 0 do outline_rect(fr, WHITE)
 	pick := -1
 	if ui_hover(fr) {
-		tooltip_hover(make_id(fr, "fillchip"), {"Fill", "The selected object's inside colour, or the one new shapes get when nothing is selected. Click to edit it in Properties."})
+		tooltip_hover(make_id(fr, "fillchip"), {"Fill", "The selected object's inside color, or the one new shapes get when nothing is selected. Click to edit it in Properties."})
 		if ui.pressed[0] do pick = 0
 	} else if ui_hover(sr) {
-		tooltip_hover(make_id(sr, "strokechip"), {"Stroke", "The selected object's outline colour, or the one new shapes get when nothing is selected. Click to edit it in Properties."})
+		tooltip_hover(make_id(sr, "strokechip"), {"Stroke", "The selected object's outline color, or the one new shapes get when nothing is selected. Click to edit it in Properties."})
 		if ui.pressed[0] do pick = 1
 	}
 	if pick >= 0 && pick != prop_target {
@@ -449,51 +525,21 @@ panel_paint_chips :: proc(r: Rect) {
 panel_options :: proc() {
 	oui.element(uictx, "options", "optionsbar", {id = "options"})
 	defer oui.end(uictx)
-	oicon("tool-icon", TOOL_ICONS[cur_tool], "tool-icon", tool_tip(cur_tool))
-	otext("tool-name", TOOL_NAMES[cur_tool], "tool-name", tool_tip(cur_tool))
+	defer oui.element_leaf(uictx, "spacer", "spacer")
+	if options_switch_ui() do return
 	#partial switch cur_tool {
 	case .Freehand:
 		v := int(smoothing * 10)
 		if oslider("Smoothing", 120, &v, 5, 200, {"Smoothing", "How far the fitted curves may stray from your stroke, in screen pixels. Higher is smoother with fewer points, lower follows your hand more closely."}, "", 1, 10) do smoothing = f32(v) / 10
-		options_grid()
-		ohint("Drag to draw; the stroke is fitted with smooth curves")
 	case .Text:
 		options_text()
-	case .Select:
-		options_grid()
-		ohint("Drag to move, handles scale, outside the corners rotates. Shift: keep proportions")
 	case .Node:
-		options_grid()
 		oui.element(uictx, "node-cmds", "button-group")
 		if obutton("Smooth", 50, {"Smooth (S)", "Give the selected points control points in line with each other, so the path curves through them."}) do node_cmd_smooth(doc)
 		if obutton("Corner", 50, {"Corner (C)", "Pull the selected points' control points back onto them, making a sharp corner."}) do node_cmd_corner(doc)
 		if obutton("Delete", 50, {"Delete (Del)", "Remove the selected points. The path joins up across the gap."}) do node_cmd_delete(doc)
 		oui.end(uictx)
-		ohint("Double click a segment to add a node. Alt breaks handle symmetry")
-	case .Control:
-		options_grid()
-		ohint("Drag a control point. Where they overlap, click to step through them. Arrows nudge. Alt breaks symmetry")
-	case .Pen:
-		options_grid()
-		ohint("Click: straight line   Drag: curve   First point: click to close straight, drag to close curved   Enter finishes")
-	case .Rect, .Ellipse, .Line:
-		options_grid()
-		ohint("Shift: square / 15 degree steps   Alt: from the centre")
-	case .Picker:
-		ohint("Click an object to take its fill, Alt-click to take its stroke")
-	case .Hand:
-		ohint("Drag to pan. Space or middle mouse works with any tool")
-	case .Zoom:
-		ohint("Click to zoom in, Alt or Shift click to zoom out. The wheel zooms anywhere")
 	}
-	oui.element_leaf(uictx, "spacer", "spacer")
-}
-
-options_grid :: proc() {
-	ocheck("Grid", &show_grid, cmd_tip("Grid", .Toggle_Grid))
-	ocheck("Snap", &snap_grid, cmd_tip("Snap", .Toggle_Snap))
-	otext("grid-l", "Size", "dim", {"Grid size", "Spacing of the grid in document units, used for showing it and for snapping."})
-	oui_slot("grid-size", "grid_size")
 }
 
 // Status bar ---------------------------------------------------------------------------------------------
@@ -502,27 +548,28 @@ panel_status :: proc() {
 	d := doc
 	oui.element(uictx, "status", "statusbar", {id = "status"})
 	defer oui.end(uictx)
-	msg: ^oui.Node
 	if status_t > 0 {
-		msg = oui.label(uictx, "msg", name_str(&status_msg), {id = "status-msg", class = "message"})
+		oui_tip(oui.label(uictx, "msg", name_str(&status_msg), {id = "status-msg", class = "message"}), {"Messages", "Messages from the program appear here, such as why an action could not be done."})
 	} else {
-		msg = oui.label(uictx, "msg", APP_TAGLINE, {id = "status-msg"})
+		oui_tip(oui.label(uictx, "msg", fmt.tprintf("%s   %s", TOOL_NAMES[cur_tool], tool_hint(cur_tool)), {id = "status-msg"}), tool_tip(cur_tool))
 	}
-	oui_tip(msg, {"Messages", "Messages from the program appear here, such as why an action could not be done."})
 	oui.separator(uictx, "sep0")
 	// the readout under the pointer changes every frame, so it is drawn by hand
 	oui_slot("cursor-info", "cursor_info")
 	if len(d.sel) > 0 {
 		oui.separator(uictx, "sep1")
-		oui_tip(oui.label(uictx, "sel", fmt.tprintf("%d selected", len(d.sel))), {"Selection", "How many objects are selected. Ctrl+Shift+A clears the selection."})
+		oui_tip(oui.label(uictx, "sel", fmt.tprintf("%d selected", len(d.sel))), {"Selection", "How many objects are selected. Ctrl+D clears the selection."})
 	}
-	oui.element_leaf(uictx, "spacer", "spacer")
 	if s := pen_status(); s != "" {
 		oui_tip(oui.label(uictx, "pen", s), {"Tablet pen", "A drawing tablet pen has been detected. This shows whether it is close enough to the tablet to be read."})
 		oui.separator(uictx, "sep2")
 	}
 	oui_tip(oui.label(uictx, "size", fmt.tprintf("%d x %d", int(math.round(d.w)), int(math.round(d.h)))), {"Page size", "Width by height. Change it with Object > Page Size."})
 	oui.separator(uictx, "sep3")
+	if len(d.frames) > 1 {
+		oui_tip(oui.label(uictx, "frame", fmt.tprintf("Frame %d/%d", d.active_frame + 1, len(d.frames))), {"Current frame", "Which frame of the animation you are on, out of how many. The , and . keys step through them."})
+		oui.separator(uictx, "sep4")
+	}
 	oui_tip(oui.label(uictx, "zoom", fmt.tprintf("%d%%", int(math.round(d.zoom * 100))), {class = "strong"}), {"Zoom", "Use the mouse wheel to zoom, Ctrl+0 to fit the page and Ctrl+1 for 100%."})
 }
 

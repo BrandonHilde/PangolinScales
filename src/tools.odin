@@ -20,21 +20,28 @@ Tool :: enum {
 	Picker,
 	Hand,
 	Zoom,
+	// switches: a tool group can hold them, but they turn on and off instead of becoming the tool (switches.odin)
+	Grid,
+	Snap,
+	Onion,
 }
 
 TOOL_NAMES := [Tool]string {
 	.Select   = "Select (V)",
 	.Node     = "Node Edit (A)",
-	.Control  = "Control Points (B)",
+	.Control  = "Control Points (Shift+A)",
 	.Pen      = "Pen (P)",
-	.Freehand = "Freehand (F)",
+	.Freehand = "Freehand (B)",
 	.Rect     = "Rectangle (R)",
-	.Ellipse  = "Ellipse (E)",
+	.Ellipse  = "Ellipse (O)",
 	.Line     = "Line (L)",
 	.Text     = "Text (T)",
 	.Picker   = "Eyedropper (I)",
 	.Hand     = "Hand (H)",
 	.Zoom     = "Zoom (Z)",
+	.Grid     = "Grid (Ctrl+;)",
+	.Snap     = "Snap to Grid (Ctrl+Shift+;)",
+	.Onion    = "Onion Skin (Alt+O)",
 }
 
 TOOL_ICONS := [Tool]Icon {
@@ -50,6 +57,9 @@ TOOL_ICONS := [Tool]Icon {
 	.Picker   = .Picker,
 	.Hand     = .Hand,
 	.Zoom     = .Zoom,
+	.Grid     = .Grid,
+	.Snap     = .Pixel_Grid,
+	.Onion    = .Onion,
 }
 
 cur_tool: Tool = .Select
@@ -137,6 +147,11 @@ tools_cancel :: proc() {
 }
 
 set_tool :: proc(t: Tool) {
+	if tool_is_toggle(t) {
+		tool_toggle(t)
+		return
+	}
+	options_switch_on = false // the options bar goes back to the tool's settings
 	if t != cur_tool {
 		// the two point editing tools work on the same path
 		keep := is_point_tool(t) && is_point_tool(cur_tool) ? tl.edit_uid : 0
@@ -284,7 +299,7 @@ viewport_update :: proc(vp: Rect) {
 		d.view_init = true
 		view_fit(d, vp)
 	}
-	over := ui_hover(vp)
+	over := ui_hover(vp) && !files_dragging()
 	sp := pointer()
 	// wheel zooms around the pointer
 	if over && ui.wheel != 0 && !ui.ctrl {
@@ -327,10 +342,10 @@ view_fit :: proc(d: ^Doc, vp: Rect) {
 	d.oy = f32(vp.y) + (f32(vp.h) - d.h * d.zoom) / 2
 }
 
-view_actual :: proc(d: ^Doc, vp: Rect) {
-	d.zoom = 1
-	d.ox = f32(vp.x) + (f32(vp.w) - d.w) / 2
-	d.oy = f32(vp.y) + (f32(vp.h) - d.h) / 2
+view_actual :: proc(d: ^Doc, vp: Rect, zoom: f32 = 1) {
+	d.zoom = zoom
+	d.ox = f32(vp.x) + (f32(vp.w) - d.w * zoom) / 2
+	d.oy = f32(vp.y) + (f32(vp.h) - d.h * zoom) / 2
 }
 
 view_vp: Rect // last viewport rectangle, for commands that need it
@@ -339,6 +354,7 @@ tools_input :: proc(d: ^Doc, vp: Rect, over: bool, sp: Vec2) {
 	view_vp = vp
 	p := to_doc(d, sp)
 	pressed := ui.pressed[0] && over
+	if pressed do stop_playback() // the animation would pull the frame out from under the gesture
 	if text_editing() {
 		text_update(d, p, pressed)
 		// the text tool still takes presses on the edited text, to drag it around
@@ -365,7 +381,7 @@ tools_input :: proc(d: ^Doc, vp: Rect, over: bool, sp: Vec2) {
 	case .Zoom:
 		if over do ui.cursor = .POINTING_HAND
 		if pressed do zoom_at(d, sp, ui.alt || ui.shift ? 1 / 1.6 : 1.6)
-	case .Hand:
+	case .Hand, .Grid, .Snap, .Onion:
 	}
 }
 
@@ -613,8 +629,10 @@ tool_picker :: proc(d: ^Doc, p: Vec2) {
 	if n == nil do return
 	if ui.alt {
 		if n.stroke.kind != .None do style_set_stroke(d, n.stroke, false)
+		if n.stroke.kind == .Solid do recent_push(n.stroke.color)
 	} else if n.fill.kind != .None {
 		style_set_fill(d, n.fill, false)
+		if n.fill.kind == .Solid do recent_push(n.fill.color)
 	}
 }
 

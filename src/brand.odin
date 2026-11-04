@@ -7,7 +7,7 @@ APP_TAGLINE :: "Curves, scale by scale."
 LOGO_SIZE :: 16
 
 // Pixel-art pangolin facing left, holding a paintbrush with a wet tip.
-// Characters map to colours in `logo_color`.
+// Characters map to colors in `logo_color`.
 LOGO_ART := [LOGO_SIZE]string {
 	"...........n....",
 	"..........nn....",

@@ -23,6 +23,28 @@ FILTERS_OPEN := [?]Filter {
 FILTERS_SVG := [?]Filter{{"SVG (*.svg)", "*.svg"}}
 FILTERS_TTF := [?]Filter{{"TrueType font (*.ttf)", "*.ttf"}}
 FILTERS_PNG := [?]Filter{{"PNG image (*.png)", "*.png"}}
+FILTERS_GIF := [?]Filter{{"GIF image (*.gif)", "*.gif"}}
+
+path_basename :: proc(p: string) -> string {
+	i := strings.last_index_any(p, "/\\")
+	return i >= 0 ? p[i + 1:] : p
+}
+
+path_stem :: proc(p: string) -> string {
+	b := path_basename(p)
+	i := strings.last_index_byte(b, '.')
+	return i > 0 ? b[:i] : b
+}
+
+path_ext :: proc(p: string) -> string {
+	b := path_basename(p)
+	i := strings.last_index_byte(b, '.')
+	return i >= 0 ? b[i:] : ""
+}
+
+lower_ext :: proc(p: string) -> string {
+	return strings.to_lower(path_ext(p), context.temp_allocator)
+}
 
 // `dir`: folder the dialog starts in (empty: the system's choice).
 native_dialog :: proc(save: bool, title: string, filters: []Filter, def_ext, initial: string, dir := "") -> (path: string, ok: bool) {
