@@ -289,7 +289,7 @@ dlg_font :: proc() {
 		if ry + ROW < inner.y || ry > inner.y + inner.h do continue
 		rr := Rect{inner.x, ry, inner.w, ROW}
 		hover := ui_hover(rr) && ui_hover(list)
-		if hover do tip_area(rr, "font-row", {f.name, "Click to use this font."})
+		if hover do tip_area(rr, "font-row", {"", "Click to use this font."})
 		if f.name == cur {
 			fill_rect(rr, C_ACCENT_TINT)
 		} else if hover {

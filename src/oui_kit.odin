@@ -65,7 +65,7 @@ obutton :: proc(label: string, w: i32, tip: Tip, enabled := true, highlight := f
 	oui.label(uictx, "t", label)
 	oui.end(uictx)
 	oui_last = n
-	oui_tip(n, tip)
+	oui_tip(n, tip_for_label(tip, label))
 	return n.clicked && enabled
 }
 
@@ -123,7 +123,7 @@ ocheck :: proc(label: string, v: ^bool, tip: Tip, key := "") -> bool {
 	oui.end(uictx)
 	oui.label(uictx, "t", label)
 	oui.end(uictx)
-	oui_tip(n, tip)
+	oui_tip(n, tip_for_label(tip, label))
 	if n.clicked {
 		v^ = !v^
 		return true

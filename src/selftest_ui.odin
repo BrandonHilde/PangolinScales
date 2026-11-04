@@ -403,8 +403,82 @@ ui_selftest :: proc(t: ^Test_Run) {
 		run_cmd(.Toggle_Close_Paths)
 		run_cmd(.Offset_Out)
 		check(t, count_kind(dj.root.children[0].segs[:], .Close) > 0, "offset closes open paths with the setting on")
+
+		// offset inward keeps an object it would shrink to nothing
+		dv := sim_doc()
+		add_line(dv, {10, 10}, {60, 60})
+		undo_v := len(dv.undo)
+		run_cmd(.Offset_In)
+		check(t, len(dv.root.children) == 1 && len(dv.root.children[0].segs) == 2, "offset inward keeps a straight line")
+		check(t, len(dv.undo) == undo_v, "offset that changes nothing adds no undo step")
+		check(t, len(dv.sel) == 1, "offset that changes nothing keeps the selection")
+		dw := sim_doc()
+		tiny := new_shape(dw, .Rect)
+		tiny.x, tiny.y, tiny.w, tiny.h = 50, 50, 2, 2
+		big := new_shape(dw, .Rect)
+		big.x, big.y, big.w, big.h = 100, 100, 80, 80
+		append(&dw.root.children, tiny, big)
+		append(&dw.sel, tiny.uid, big.uid)
+		run_cmd(.Offset_In)
+		check(t, len(dw.root.children) == 2 && len(node_render_segs(dw.root.children[0])) > 0, "offset inward keeps a shape too small to shrink")
+		check(t, len(dw.root.children) == 2 && dw.root.children[1].kind == .Path, "offset inward still shrinks the other selected shapes")
 		run_cmd(.Toggle_Close_Paths)
 		cur_tool = .Select
+
+		// close or open: an explicit command, whatever the Close Open Paths setting says
+		dy := sim_doc()
+		pa := add_line(dy, {10, 10}, {60, 60})
+		path_line(&pa.segs, {10, 60})
+		undo_y := len(dy.undo)
+		run_cmd(.Close_Or_Open)
+		check(t, count_kind(pa.segs[:], .Close) == 1, "close or open closes an open path")
+		check(t, len(dy.undo) == undo_y + 1, "close or open is one undo step")
+		run_cmd(.Close_Or_Open)
+		check(t, count_kind(pa.segs[:], .Close) == 0 && len(pa.segs) == 3, "close or open opens it again, back as it was")
+
+		// opening removes a straight line back to the start, but keeps a curve
+		dz := sim_doc()
+		ps1 := add_line(dz, {10, 10}, {60, 10})
+		path_line(&ps1.segs, {60, 60})
+		path_line(&ps1.segs, {10, 10})
+		path_close(&ps1.segs)
+		run_cmd(.Close_Or_Open)
+		check(t, len(ps1.segs) == 3 && ps1.segs[2].p == Vec2{60, 60}, "opening drops a straight segment back to the start")
+		dc2 := sim_doc()
+		pc := add_line(dc2, {10, 10}, {60, 10})
+		path_cubic(&pc.segs, {90, 60}, {10, 90}, {10, 10})
+		path_close(&pc.segs)
+		run_cmd(.Close_Or_Open)
+		check(t, count_kind(pc.segs[:], .Close) == 0 && count_kind(pc.segs[:], .Cubic) == 1, "opening keeps a curve back to the start")
+		run_cmd(.Close_Or_Open)
+		check(t, count_kind(pc.segs[:], .Close) == 1, "a path whose ends touch can be closed again")
+
+		// with a mix, it closes; a rectangle opens as a path; several subpaths all change
+		dm2 := sim_doc()
+		pm := add_line(dm2, {10, 10}, {60, 10})
+		rm := new_shape(dm2, .Rect)
+		rm.x, rm.y, rm.w, rm.h = 80, 80, 40, 40
+		append(&dm2.root.children, rm)
+		append(&dm2.sel, rm.uid)
+		run_cmd(.Close_Or_Open)
+		check(t, count_kind(pm.segs[:], .Close) == 1 && count_kind(rm.segs[:], .Close) == 1, "with open and closed paths selected, all end up closed")
+		run_cmd(.Close_Or_Open)
+		check(t, rm.kind == .Path && count_kind(rm.segs[:], .Close) == 0 && count_kind(pm.segs[:], .Close) == 0, "opening reaches a rectangle too")
+		dn := sim_doc()
+		pn := add_line(dn, {10, 10}, {60, 10})
+		path_move(&pn.segs, {10, 40})
+		path_line(&pn.segs, {60, 40})
+		run_cmd(.Close_Or_Open)
+		check(t, count_kind(pn.segs[:], .Close) == 2, "closing reaches every subpath")
+
+		// a selection with no paths changes nothing
+		dq2 := sim_doc()
+		tq := new_shape(dq2, .Text)
+		append(&dq2.root.children, tq)
+		append(&dq2.sel, tq.uid)
+		undo_q2 := len(dq2.undo)
+		run_cmd(.Close_Or_Open)
+		check(t, tq.kind == .Text && len(dq2.undo) == undo_q2, "close or open ignores text")
 
 		// a path that returns to its start has no gap to close, so it counts as a shape even without Close
 		di := sim_doc()
@@ -557,7 +631,7 @@ tool_groups_selftest :: proc(t: ^Test_Run) {
 	check(t, tool_groups[1].key == .TWO && tool_groups[2].key == .KEY_NULL, "groups round trip: hotkeys")
 	check(t, len(tool_groups[4].tools) == 3 && tool_groups[4].tools[2] == .Select, "groups round trip: tools")
 	check(t, len(tool_groups[6].tools) == 0 && len(tool_groups[6].ops) == 0, "groups round trip: empty group")
-	check(t, len(tool_groups[5].ops) == 7 && tool_groups[5].ops[6] == .Toggle_Close_Paths && tool_groups[5].ops[1] == .Subtract && len(tool_groups[5].tools) == 0, "groups round trip: path operations")
+	check(t, len(tool_groups[5].ops) == 8 && tool_groups[5].ops[7] == .Toggle_Close_Paths && tool_groups[5].ops[1] == .Subtract && len(tool_groups[5].tools) == 0, "groups round trip: path operations")
 	tool_groups_parse("65:Pen,Nonsense,Pen:X;7:Rect")
 	check(t, len(tool_groups) == 2 && len(tool_groups[0].tools) == 1 && tool_groups[0].key == .A, "unknown tools and duplicates are dropped")
 	check(t, tool_groups[1].key == .KEY_NULL, "keys that are not letters or digits are dropped")
@@ -572,6 +646,9 @@ tool_groups_selftest :: proc(t: ^Test_Run) {
 	}
 	for tool in Tool do check(t, len(TOOL_HELP[tool]) > 15, "every tool has help text")
 	check(t, cmd_tip("Union", .Union).title == "Union (Ctrl++)" && cmd_tip("Union", .Union).desc == cmd_help(.Union), "a command's tooltip: name and shortcut, then what it does")
+	check(t, tip_for_label({"Cancel", "d"}, "Cancel") == Tip{"", "d"}, "a title that repeats a button's text is dropped")
+	check(t, tip_for_label({"Export TrueType", "d"}, "Export TrueType...") == Tip{"", "d"}, "a button's trailing dots do not count")
+	check(t, tip_for_label({"Smooth (S)", "d"}, "Smooth").title == "Smooth (S)", "a title that adds something stays")
 	for title in MENU_TITLES_FONT do check(t, menu_title_tip(title).desc != "", "every menu title has help text")
 	{
 		measure :: proc(s: string) -> i32 {return i32(len(s)) * 10}

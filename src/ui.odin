@@ -323,8 +323,15 @@ ui_hover :: proc(r: Rect) -> bool {
 }
 
 // What a tooltip says. The title shows first, and the description joins it under the title if the pointer stays.
+// A control whose own text would repeat the title has none: its tooltip is just the description.
 Tip :: struct {
 	title, desc: string,
+}
+
+// Drops a title that only repeats the text on the control.
+tip_for_label :: proc(tip: Tip, label: string) -> Tip {
+	if strings.equal_fold(tip.title, strings.trim_suffix(label, "...")) do return {"", tip.desc}
+	return tip
 }
 
 TIP_TITLE_DELAY :: 0.45
@@ -426,7 +433,7 @@ ctl_state :: proc(r: Rect, hover, held, on, enabled: bool) -> Color {
 
 button :: proc(r: Rect, label: string, tip: Tip, enabled := true, highlight := false) -> bool {
 	id := make_id(r, label)
-	clicked, held, hover := button_behavior(id, r, tip)
+	clicked, held, hover := button_behavior(id, r, tip_for_label(tip, label))
 	if !enabled {
 		clicked, held, hover = false, false, false
 	}
@@ -438,7 +445,7 @@ button :: proc(r: Rect, label: string, tip: Tip, enabled := true, highlight := f
 // Filled call-to-action button (dialog OK).
 button_primary :: proc(r: Rect, label: string, tip: Tip) -> bool {
 	id := make_id(r, label)
-	clicked, held, hover := button_behavior(id, r, tip)
+	clicked, held, hover := button_behavior(id, r, tip_for_label(tip, label))
 	fill := C_ACTIVE
 	if hover do fill = shade(C_ACTIVE, 1.13)
 	if held do fill = shade(C_ACTIVE, 0.84)
@@ -469,7 +476,7 @@ toggle_button :: proc(r: Rect, ic: Icon, v: ^bool, tip: Tip) -> bool {
 checkbox :: proc(x, y: i32, label: string, v: ^bool, tip: Tip) -> bool {
 	r := Rect{x, y, 18 + text_w(label), 12}
 	id := make_id(r, label)
-	clicked, held, hover := button_behavior(id, r, tip)
+	clicked, held, hover := button_behavior(id, r, tip_for_label(tip, label))
 	box := Rect{x, y, 12, 12}
 	if v^ {
 		draw_rrect(f32(box.x), f32(box.y), 12, 12, 2, C_ACCENT_TINT)
@@ -792,7 +799,7 @@ Popup_Item :: struct {
 	checked: bool,
 	enabled: bool,
 	sep:     bool,
-	tip:     string, // the tooltip's description, under the label as its title: a constant, it outlives the frame
+	tip:     string, // the tooltip's description: a constant, it outlives the frame
 	// grid popups only
 	icon:     Icon,
 	has_icon: bool,
@@ -928,7 +935,7 @@ popup_run :: proc() {
 			continue
 		}
 		ir := Rect{box.x + 4, cy, box.w - 8, POPUP_ITEM_H}
-		tip_area(ir, "popup", Tip{name_str(&it.label), it.tip})
+		tip_area(ir, "popup", Tip{"", it.tip}) // the item's own text is the title
 		hover := ui_hover(ir) && it.enabled
 		if hover {
 			draw_rrect(f32(ir.x), f32(ir.y), f32(ir.w), f32(ir.h), RADIUS, C_ACTIVE)
@@ -1172,7 +1179,8 @@ tooltip_wrap :: proc(s: string, max_w: i32, measure: proc(_: string) -> i32) -> 
 
 tooltip_draw :: proc() {
 	tooltip_resolve()
-	if ui.tip.title == "" {
+	has_title := ui.tip.title != ""
+	if !has_title && !ui.tip_desc {
 		return
 	}
 	max_w := min(TIP_MAX_W, i32(ui.w) - 14)
@@ -1181,9 +1189,12 @@ tooltip_draw :: proc() {
 	title_w, desc_w: i32
 	for l in title do title_w = max(title_w, text_w(l))
 	for l in desc do desc_w = max(desc_w, text_w(l))
-	title_h := i32(len(title)) * TIP_LINE_H + 5
-	desc_h := len(desc) > 0 ? i32(len(desc)) * TIP_LINE_H + TIP_DESC_GAP : 0
 	show_desc := ui.tip_desc && len(desc) > 0
+	if !has_title && !show_desc {
+		return
+	}
+	title_h := has_title ? i32(len(title)) * TIP_LINE_H + 5 : 0
+	desc_h := len(desc) > 0 ? i32(len(desc)) * TIP_LINE_H + (has_title ? TIP_DESC_GAP : 5) : 0
 	w := (show_desc ? max(title_w, desc_w) : title_w) + 14
 	h := show_desc ? title_h + desc_h : title_h
 	// beside the pointer. It grows down and to the right unless the window's edge makes it grow the other way.
@@ -1203,8 +1214,8 @@ tooltip_draw :: proc() {
 		text(x + 7, y + 3 + i32(i) * TIP_LINE_H + (TIP_LINE_H - FONT_CAP) / 2, l, WHITE)
 	}
 	if show_desc {
-		dy := y + title_h + TIP_DESC_GAP - 2
-		hline(x + 7, y + title_h + TIP_DESC_GAP / 2 - 1, w - 14, C_RING_HI)
+		dy := has_title ? y + title_h + TIP_DESC_GAP - 2 : y + 3
+		if has_title do hline(x + 7, y + title_h + TIP_DESC_GAP / 2 - 1, w - 14, C_RING_HI)
 		for l, i in desc {
 			text(x + 7, dy + i32(i) * TIP_LINE_H + (TIP_LINE_H - FONT_CAP) / 2, l, C_TEXT)
 		}

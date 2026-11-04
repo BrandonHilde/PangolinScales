@@ -157,7 +157,7 @@ oui_rect :: proc(n: ^oui.Node) -> Rect {
 
 // Our tooltip for a node under the pointer.
 oui_tip :: proc(n: ^oui.Node, tip: Tip) {
-	if n != nil && n.hovered && tip.title != "" {
+	if n != nil && n.hovered && (tip.title != "" || tip.desc != "") {
 		tooltip_hover(u32(uintptr(n)) | 1, tip)
 	}
 }

@@ -37,6 +37,7 @@ PATH_OPS := [?]Path_Op {
 	{.Combine, .Combine, "Combine", 2},
 	{.Break_Apart, .Break_Apart, "Break Apart", 1},
 	{.Reverse, .Reverse, "Reverse Direction", 1},
+	{.Close_Or_Open, .Close_Path, "Close or Open Path", 1},
 	{.Simplify, .Simplify, "Simplify", 1},
 	{.Offset_Out, .Offset_Out, "Offset Outward", 1},
 	{.Offset_In, .Offset_In, "Offset Inward", 1},
@@ -144,7 +145,7 @@ tool_groups_default :: proc() {
 		name    = make_name("Path"),
 		last_op = .Union,
 	}
-	append(&path.ops, Cmd.Union, Cmd.Subtract, Cmd.Intersect, Cmd.Exclude, Cmd.Combine, Cmd.Break_Apart, Cmd.Toggle_Close_Paths)
+	append(&path.ops, Cmd.Union, Cmd.Subtract, Cmd.Intersect, Cmd.Exclude, Cmd.Combine, Cmd.Break_Apart, Cmd.Close_Or_Open, Cmd.Toggle_Close_Paths)
 	append(&tool_groups, path)
 }
 

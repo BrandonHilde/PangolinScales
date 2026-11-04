@@ -85,6 +85,79 @@ path_has_open_subpath :: proc(segs: []Seg) -> bool {
 	return drawn && cur != start
 }
 
+// True if a drawn subpath has no Close, wherever it ends.
+path_has_unclosed_subpath :: proc(segs: []Seg) -> bool {
+	drawn := false
+	for g in segs {
+		#partial switch g.kind {
+		case .Move:
+			if drawn do return true
+			drawn = false
+		case .Close:
+			drawn = false
+		case:
+			drawn = true
+		}
+	}
+	return drawn
+}
+
+// Closes every subpath, or opens every subpath. Opening also drops a straight segment that only returned to the
+// start, so it undoes what closing looks like; a curve back to the start stays.
+path_set_closed :: proc(p: ^Path, closed: bool) {
+	out := make(Path, context.temp_allocator)
+	start: Vec2
+	drawn := false
+	for g in p {
+		#partial switch g.kind {
+		case .Move:
+			if drawn && closed do path_close(&out)
+			start = g.p
+			drawn = false
+			append(&out, g)
+		case .Close:
+			if closed {
+				append(&out, g)
+			} else if n := len(out); n >= 3 && out[n - 1].kind == .Line && out[n - 1].p == start {
+				pop(&out)
+			}
+			drawn = false
+		case:
+			append(&out, g)
+			drawn = true
+		}
+	}
+	if drawn && closed do path_close(&out)
+	clear(p)
+	append(p, ..out[:])
+}
+
+// Closes the selected paths if any of them is open; otherwise opens them all. Rectangles and ellipses become paths.
+cmd_close_or_open :: proc(d: ^Doc) {
+	nodes := sel_nodes(d)
+	any_path, any_open := false, false
+	for n in nodes {
+		if n.kind == .Group || n.kind == .Text do continue
+		any_path = true
+		if n.kind == .Path && path_has_unclosed_subpath(n.segs[:]) do any_open = true
+	}
+	if !any_path {
+		set_status("Select a path to close or open")
+		return
+	}
+	history_push(d)
+	for n in nodes {
+		if n.kind == .Group || n.kind == .Text do continue
+		node_to_path(n)
+		if n.kind == .Path do path_set_closed(&n.segs, any_open)
+	}
+	// the points of the edited path have new indices
+	clear(&tl.anchors)
+	tl.ctrl_on = false
+	set_status(any_open ? "Paths closed" : "Paths opened")
+	doc_changed(d)
+}
+
 // True for a node the boolean operations cannot use as a shape: its geometry encloses nothing, like a straight
 // line, or it has an open path while Close Open Paths is off.
 node_is_line :: proc(d: ^Doc, n: ^Node) -> bool {
@@ -258,12 +331,21 @@ cmd_offset :: proc(d: ^Doc, dir: f32) {
 	amount := dir * max(5 / d.zoom, 1)
 	if cur_sw > 0 do amount = dir * cur_sw
 	clear(&d.sel)
+	changed, kept := false, false
 	for n in nodes {
 		if n.kind == .Group do continue
 		w := mat_mul(node_parent_world(d, n), n.xf)
 		all := make(Path, context.temp_allocator)
 		node_world_segs(d, n, &all)
 		res := offset_path(all[:], amount)
+		if len(res) == 0 {
+			// shrunk to nothing: the object stays as it is rather than vanishing
+			delete(res)
+			append(&d.sel, n.uid)
+			kept = true
+			continue
+		}
+		changed = true
 		c := new_path_like(d, n, res[:])
 		delete(res)
 		paint_to_world(&c.fill, w)
@@ -275,6 +357,14 @@ cmd_offset :: proc(d: ^Doc, dir: f32) {
 		ordered_remove(&parent.children, pos)
 		node_free(n)
 		append(&d.sel, c.uid)
+	}
+	if kept do set_status("Nothing would be left, so it was kept")
+	if !changed {
+		if len(d.undo) > 0 {
+			s := pop(&d.undo)
+			state_free(&s)
+		}
+		return
 	}
 	doc_changed(d)
 }

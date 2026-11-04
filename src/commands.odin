@@ -51,6 +51,7 @@ Cmd :: enum {
 	Combine,
 	Break_Apart,
 	Reverse,
+	Close_Or_Open,
 	Simplify,
 	Offset_Out,
 	Offset_In,
@@ -218,6 +219,8 @@ run_cmd :: proc(c: Cmd) {
 		cmd_break_apart(d)
 	case .Reverse:
 		cmd_reverse(d)
+	case .Close_Or_Open:
+		cmd_close_or_open(d)
 	case .Simplify:
 		cmd_simplify(d)
 	case .Offset_Out:

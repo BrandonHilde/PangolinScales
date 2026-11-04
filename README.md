@@ -17,7 +17,7 @@ default): pressing it picks the tool last used from that group, pressing it agai
 - Click a group's keycap to assign a hotkey (any letter or digit; Esc cancels, Backspace clears), rename or remove the group.
   A hotkey on a letter takes over that letter's single-key tool shortcut. Right-click the header for rename / remove.
 - The **+** at the end of a group adds any tool or **path operation** (union, subtract, intersect, exclude, combine,
-  break apart, reverse, simplify, offset, object / stroke to path) to it; right-click one to take it out. Operation buttons
+  break apart, reverse, close or open, simplify, offset, object / stroke to path) to it; right-click one to take it out. Operation buttons
   act on the selection at once and are greyed out until enough objects are selected. The default **Path** group (6) holds
   the booleans; the hotkey of a group with operations but no tools repeats the operation last used from it.
 - **+ New Group** adds an empty group (up to 12). View > Reset Tool Groups brings back the defaults.
@@ -39,7 +39,7 @@ Properties.
 - **Objects**: group / ungroup, z-order, lock and hide, duplicate, copy / paste (also as SVG text with other apps), flip, rotate 90,
   align and distribute, an objects panel (drag rows to reorder objects or move them in and out of groups; drop beside the
   list to cancel).
-- **Path menu**: union, subtract, intersect, exclude, combine, break apart, reverse, simplify, offset in and out, stroke to path,
+- **Path menu**: union, subtract, intersect, exclude, combine, break apart, reverse, close or open, simplify, offset in and out, stroke to path,
   object to path, text to outlines. Booleans keep untouched curves exact. Paths stay open unless you close them with the pen or
   turn on **Close Open Paths**, which lets freehand strokes close when they end near their start, and lets booleans and offset
   join the ends of open paths with a straight line. While it is off, union merges open paths into one path without closing
@@ -70,7 +70,7 @@ Properties.
 ## Shortcuts (Help > Keyboard Shortcuts in the app)
 | | |
 |-|-|
-| 1 - 5 | tool groups (press again to cycle) |
+| 1 - 6 | tool groups (press again to cycle) |
 | Tab | canvas mode |
 | V / A / B / P / F | select / node edit / control points / pen / freehand |
 | R / E / L / T / I | rectangle / ellipse / line / text / eyedropper |

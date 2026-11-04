@@ -102,12 +102,14 @@ cmd_help :: proc(c: Cmd) -> string {
 		return "Split a path made of several separate pieces into one object per piece."
 	case .Reverse:
 		return "Reverse the drawing direction of the selected paths. This matters for dashes, and for holes in shapes."
+	case .Close_Or_Open:
+		return "Close the selected paths, joining each path's ends with a straight line. If they are all closed already, open them instead. This works whether or not Close Open Paths is on."
 	case .Simplify:
 		return "Reduce the number of points in the selected paths while keeping them close to their shape. Text becomes outlines."
 	case .Offset_Out:
 		return "Grow the selected shapes outwards by the current stroke width. Open paths need Close Open Paths turned on."
 	case .Offset_In:
-		return "Shrink the selected shapes inwards by the current stroke width. Open paths need Close Open Paths turned on."
+		return "Shrink the selected shapes inwards by the current stroke width. A shape that would shrink to nothing is left as it is. Open paths need Close Open Paths turned on."
 	case .Text_To_Outlines:
 		return "Turn the selected text into filled shapes, so it no longer needs the font. It can't be edited as text afterwards."
 	case .Fit_View:
@@ -204,5 +206,5 @@ menu_title_tip :: proc(title: string) -> Tip {
 	case "View":   desc = "Zoom, the grid, canvas mode and the tracing image."
 	case "Help":   desc = "Keyboard shortcuts and information about the program."
 	}
-	return {fmt.tprintf("%s menu", title), desc}
+	return {"", desc}
 }

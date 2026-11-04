@@ -203,7 +203,7 @@ dialogs_run :: proc() {
 	case .Shortcuts:
 		c := dialog_frame("Keyboard Shortcuts", 520, 372)
 		lines := [?][2]string {
-			{"1 - 5 (tool groups)", "pick a group, press again to cycle its tools"},
+			{"1 - 6 (tool groups)", "pick a group, press again to cycle its tools"},
 			{"V / A / B / P / F", "select / node edit / control points / pen / freehand"},
 			{"R / E / L / T / I", "rectangle / ellipse / line / text / eyedropper"},
 			{"H, Space (hold), middle drag", "pan"},

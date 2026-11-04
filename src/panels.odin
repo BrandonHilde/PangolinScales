@@ -111,7 +111,7 @@ panel_objects :: proc(area: Rect) {
 		if selected do fill_rect(rr, with_alpha(C_ACTIVE, 120))
 		else if hover do fill_rect(rr, C_HOVER)
 		x := r.x + 4
-		tip_area(rr, "object-row", {name_str(&n.name), "Click to select this object, Shift-click to add it to the selection or take it out. Drag to change its stacking order or move it in or out of a group. Drop beside the list to cancel."})
+		tip_area(rr, "object-row", {"", "Click to select this object, Shift-click to add it to the selection or take it out. Drag to change its stacking order or move it in or out of a group. Drop beside the list to cancel."})
 		if icon_button(Rect{x, y + 1, 14, 14}, .Eye, {"Show or hide", "Hidden objects stay in the document but are not drawn or picked."}, n.visible) {
 			history_push(d)
 			n.visible = !n.visible
@@ -493,7 +493,7 @@ gradient_edit :: proc(d: ^Doc, x, w: i32, y: ^i32, paint: ^Paint) {
 			np.stops[grad_stop].t = clamp(f32(tv) / 100, lo, hi)
 			changed = true
 		}
-		if button(Rect{x + hw + 4, y^, hw / 2 - 2, 14}, "+ Stop", {"Add stop", "Add a colour stop next to the selected one, halfway to its neighbour and with the blended colour."}) && paint.nstops < MAX_STOPS {
+		if button(Rect{x + hw + 4, y^, hw / 2 - 2, 14}, "+ Stop", {"", "Add a colour stop next to the selected one, halfway to its neighbour and with the blended colour."}) && paint.nstops < MAX_STOPS {
 			i := grad_stop
 			j := min(i + 1, paint.nstops - 1)
 			if j == i do i = max(i - 1, 0)
@@ -506,7 +506,7 @@ gradient_edit :: proc(d: ^Doc, x, w: i32, y: ^i32, paint: ^Paint) {
 			grad_stop = pos
 			changed = true
 		}
-		if button(Rect{x + hw + 4 + hw / 2 + 2, y^, hw / 2 - 2, 14}, "- Stop", {"Remove stop", "Remove the selected colour stop. A gradient always keeps at least two."}) && paint.nstops > 2 {
+		if button(Rect{x + hw + 4 + hw / 2 + 2, y^, hw / 2 - 2, 14}, "- Stop", {"", "Remove the selected colour stop. A gradient always keeps at least two."}) && paint.nstops > 2 {
 			for k in grad_stop ..< np.nstops - 1 do np.stops[k] = np.stops[k + 1]
 			np.nstops -= 1
 			grad_stop = clamp(grad_stop, 0, np.nstops - 1)

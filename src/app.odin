@@ -171,6 +171,7 @@ menu_build :: proc(idx: int) {
 		item("Combine", cmd = .Combine)
 		item("Break Apart", cmd = .Break_Apart)
 		item("Reverse Direction", cmd = .Reverse)
+		item("Close or Open Path", cmd = .Close_Or_Open)
 		popup_sep()
 		item("Simplify", cmd = .Simplify)
 		item("Offset Outward", cmd = .Offset_Out)
@@ -260,7 +261,7 @@ panel_tabs :: proc() {
 	for d in docs {
 		active := d == doc
 		t := oui.button_begin(uictx, fmt.tprintf("tab%x", uintptr(d)), {class = active ? "tab active" : "tab"})
-		oui_tip(t, {doc_display_name(d), fmt.tprintf("%s Click to switch to it, middle-click to close it.", doc_status(d))})
+		oui_tip(t, {"", fmt.tprintf("%s Click to switch to it, middle-click to close it.", doc_status(d))})
 		if active do oui.element_leaf(uictx, "accent", "tab-accent")
 		oui.label(uictx, "name", doc_display_name(d))
 		if c, _ := oui_icon_button("close", .Close, {"Close document", "Close this document. If it has unsaved changes you are asked first."}, {class = "tab-close", enabled = true}); c {
@@ -401,7 +402,7 @@ panel_toolbar :: proc() {
 		}
 	}
 	if len(tool_groups) < MAX_TOOL_GROUPS {
-		if obutton("+ New Group", 0, {"New group", "Add an empty tool group to the toolbar, then use its + button to fill it. You can have up to 12 groups."}, id = "new-group") {
+		if obutton("+ New Group", 0, {"", "Add an empty tool group to the toolbar, then use its + button to fill it. You can have up to 12 groups."}, id = "new-group") {
 			append(&tool_groups, Tool_Group{})
 		}
 	}
