@@ -23,6 +23,10 @@ default): pressing it picks the tool last used from that group, pressing it agai
   break apart, reverse, close or open, simplify, offset, object / stroke to path) to it; right-click one to take it out. Operation buttons
   act on the selection at once and are grayed out until enough objects are selected. The default **Path** group (6) holds
   the booleans; the hotkey of a group with operations but no tools repeats the operation last used from it.
+- **Change Fill** and **Change Stroke** are operations too: each press steps through None, Solid, Linear gradient and Radial gradient.
+  Selected objects each keep their own colors, a full round brings back colors and gradient stops, and with nothing selected it sets
+  what new shapes get. In a group with tools they take their turn after the tools as the hotkey steps through them; in a group with no
+  tools the hotkey repeats the last one used, so a group of its own steps the type with every press.
 - **Switches** (Grid, Snap to Grid, Onion Skin) can sit among the tools. Clicking one turns it on and shows its settings in the
   options bar; picking a tool brings the tool's settings back, and the switch stays on. Click a switch that is on to see its settings
   again, and once more to turn it off. The default **View** group holds Hand, Zoom, Grid and Snap.
@@ -78,7 +82,11 @@ are on. The Frame menu and the timeline add, duplicate, delete and move frames.
 
 ## SVG editing
 - **Tools**: select (move, scale, rotate), node edit, pen (click for a straight line, drag for a curve; click the first point to close straight, drag it to close with a curve), freehand
-  (fits smooth Bezier curves to your stroke), rectangle, ellipse, line, text, eyedropper, hand, zoom.
+  (fits smooth Bezier curves to your stroke), eraser, rectangle, ellipse, line, text, eyedropper, hand, zoom.
+- **Eraser** (E): drag over a shape to cut part of it away. Filled shapes keep a smooth, editable cut edge, and the rest of their outline
+  keeps its original curves. Lines and outlines without a fill are split, so they stay lines. With a selection, only the selected objects
+  are erased. The eraser end of a pen uses it from any tool that works on shapes, pressure sets the width, and a tool group's
+  **Use for pen eraser** gives that end another tool instead, as in Pangolin Paints and Pixels. Text has to become a path first.
 - **Nodes**: drag anchors and handles (handles mirror when a node is smooth, Alt breaks the symmetry), double click a segment to add a
   node, make nodes smooth or corner, delete nodes, move with the arrow keys. The **control points** tool (Shift+A) picks control points
   only, including ones lying on their anchor: where several overlap, click to step through them, then drag or use the arrow keys.
@@ -123,6 +131,7 @@ are on. The Frame menu and the timeline add, duplicate, delete and move frames.
 | Tab | canvas mode |
 | V / A / Shift+A / P / B | select / node edit / control points / pen / freehand (F also works) |
 | R / O / L / T / I | rectangle / ellipse / line / text / eyedropper |
+| E, [ / ] | eraser, smaller / bigger eraser |
 | H, Space (hold), middle drag | pan |
 | Wheel, Ctrl+= / Ctrl+- (or + / -) | zoom |
 | Ctrl+0 / Ctrl+1 / Ctrl+2 | fit to window / 100% / 200% |

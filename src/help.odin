@@ -104,6 +104,10 @@ cmd_help :: proc(c: Cmd) -> string {
 		return "Reverse the drawing direction of the selected paths. This matters for dashes, and for holes in shapes."
 	case .Close_Or_Open:
 		return "Close the selected paths, joining each path's ends with a straight line. If they are all closed already, open them instead. This works whether or not Close Open Paths is on."
+	case .Change_Fill:
+		return "Step the fill to its next type: none, solid, linear gradient, radial gradient. Each selected shape keeps its own colors, and a full round brings them back. With nothing selected, this sets what new shapes get. A group's hotkey runs it when its turn comes after the group's tools. With no tools in the group, the hotkey repeats it."
+	case .Change_Stroke:
+		return "Step the stroke to its next type: none, solid, linear gradient, radial gradient. Each selected shape keeps its own colors, and a full round brings them back. With nothing selected, this sets what new shapes get. A group's hotkey runs it when its turn comes after the group's tools. With no tools in the group, the hotkey repeats it."
 	case .Simplify:
 		return "Reduce the number of points in the selected paths while keeping them close to their shape. Text becomes outlines."
 	case .Offset_Out:
@@ -210,6 +214,7 @@ TOOL_HELP := [Tool]string {
 	.Control  = "Like Node Edit, but only control points can be picked, even ones on top of an anchor. Where several overlap, click to step through them, then drag or use the arrow keys. Alt breaks handle symmetry.",
 	.Pen      = "Click for a straight line, drag for a curve. Click the first point to close with a straight line, or drag it to close with a curve. Enter or Esc finishes, Backspace removes the last point.",
 	.Freehand = "Drag to draw a stroke, which is fitted with smooth curves. The Smoothing setting controls how closely they follow your hand.",
+	.Eraser   = "Drag over a shape to cut part of it away, keeping it a vector shape. Lines and outlines without a fill are split into shorter lines. With a selection, only the selected objects are erased. Locked and hidden objects and text are left alone. The eraser end of a pen does this too, and pressure sets the width. [ and ] change the size.",
 	.Rect     = "Drag to draw a rectangle. Shift makes a square, Alt draws from the center.",
 	.Ellipse  = "Drag to draw an ellipse. Shift makes a circle, Alt draws from the center.",
 	.Line     = "Drag to draw a straight line. Shift keeps it to 15 degree steps, Alt draws from the center.",
@@ -229,6 +234,7 @@ TOOL_HINT := [Tool]string {
 	.Control  = "Drag a control point. Where they overlap, click to step through them. Arrows nudge. Alt breaks symmetry",
 	.Pen      = "Click: straight line   Drag: curve   First point: click to close straight, drag to close curved   Enter finishes",
 	.Freehand = "Drag to draw; the stroke is fitted with smooth curves",
+	.Eraser   = "Drag to cut away part of a shape or line. With a selection, only it is erased. [ ] change the size",
 	.Rect     = "Shift: square   Alt: from the center",
 	.Ellipse  = "Shift: circle   Alt: from the center",
 	.Line     = "Shift: 15 degree steps   Alt: from the center",

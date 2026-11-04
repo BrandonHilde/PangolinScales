@@ -337,8 +337,9 @@ panel_toolbar :: proc() {
 	ADD_FILL_COLOR :: 900
 	ADD_SWATCHES :: 901
 	cg := current_group()
+	eff := eff_tool()
 	for &g, gi in tool_groups {
-		oui.element(uictx, fmt.tprintf("g%d", gi), "tool-group")
+		oui.element(uictx, fmt.tprintf("g%d", gi), "tool-group", {class = g.pen_eraser ? "eraser" : ""})
 		// header: the name on the left, the hotkey as a keycap on the right
 		// (click the keycap for options; right-click the header for rename / remove)
 		hdr := oui.element(uictx, "head", "group-head")
@@ -349,13 +350,14 @@ panel_toolbar :: proc() {
 		kc := oui.button_begin(uictx, "key", {class = label == "-" ? "keycap none" : "keycap", checked = waiting})
 		oui.label(uictx, "t", label)
 		oui.end(uictx)
-		oui_tip(kc, {"Group hotkey", "Press this key to pick the group's last tool, and again to step through its tools. A group with only operations repeats the last one, and a color group steps through its colors. Click to change the key, rename or remove the group."})
+		oui_tip(kc, {"Group hotkey", "Press this key to pick the group's last tool, and again to step through its tools, with Change Fill and Change Stroke taking their turn after them. A group with only operations repeats the last one, and a color group steps through its colors. Click to change the key, rename or remove the group."})
 		oui.end(uictx)
 		bid := make_id({}, fmt.tprintf("grpbadge%d", gi))
 		if kc.clicked {
 			popup_begin(bid, oui_rect(kc), 120)
 			popup_item("Assign hotkey...", 0, tip = "Choose the key for this group: press a letter or digit next. Esc cancels, Backspace removes the hotkey.")
 			popup_item("Rename...", 3, tip = "Give this tool group a different name.")
+			if len(g.colors) == 0 do popup_item("Use for pen eraser", 2, checked = g.pen_eraser, tip = "The eraser end of a drawing pen uses this group's tool, which you pick here apart from the pen tip's. Only one group can do this.")
 			popup_item("Remove group", 1, tip = "Remove this tool group from the toolbar. Its tools stay available from their shortcuts and other groups.")
 		}
 		if ui.popup_result_id == bid {
@@ -363,6 +365,9 @@ panel_toolbar :: proc() {
 			case 0:
 				group_key_wait = gi
 				set_status("Press a letter or digit for this tool group (Esc cancels, Backspace clears)")
+			case 2:
+				group_set_pen_eraser(gi)
+				set_status(g.pen_eraser ? "The pen's eraser end now uses this group's tool" : "The pen's eraser end erases again")
 			case 3:
 				group_rename_open(gi)
 			case:
@@ -385,17 +390,20 @@ panel_toolbar :: proc() {
 		}
 		oui.element(uictx, "items", "group-items")
 		for tool, ti in g.tools {
-			lit := tool_is_toggle(tool) ? tool_toggle_on(tool) : cur_tool == tool && cg == gi
+			// the pen eraser's group keeps its own selection, apart from the pen tip's tool
+			lit := g.pen_eraser ? g.last == tool : eff == tool && (cg == gi || eff != cur_tool)
+			if tool_is_toggle(tool) do lit = tool_toggle_on(tool)
 			clicked, bn := oui_icon_button(fmt.tprintf("t%d", int(tool)), TOOL_ICONS[tool], tool_tip(tool), {class = "tool", lit = lit, enabled = true, icon_lg = true})
 			if clicked {
-				select_tool_in_group(tool, gi)
+				if g.pen_eraser && !tool_is_toggle(tool) do g.last = tool
+				else do select_tool_in_group(tool, gi)
 			} else if bn.hovered && ui.pressed[1] && !popup.open {
 				rem_g, rem_t = gi, ti
 			}
 		}
 		for c, oi in g.ops {
 			op, _ := path_op(c)
-			clicked, bn := oui_icon_button(fmt.tprintf("o%d", int(c)), op.icon, cmd_tip(op.name, c), {class = "tool op", lit = c == .Toggle_Close_Paths && close_open_paths, enabled = path_op_enabled(op), icon_lg = true})
+			clicked, bn := oui_icon_button(fmt.tprintf("o%d", int(c)), op.icon, cmd_tip(op.name, c), {class = "tool op", lit = (c == .Toggle_Close_Paths && close_open_paths) || c == g.turn_op, enabled = path_op_enabled(op), icon_lg = true})
 			if clicked {
 				group_run_op(gi, c)
 			} else if bn.hovered && ui.pressed[1] && !popup.open {
@@ -527,10 +535,13 @@ panel_options :: proc() {
 	defer oui.end(uictx)
 	defer oui.element_leaf(uictx, "spacer", "spacer")
 	if options_switch_ui() do return
-	#partial switch cur_tool {
+	#partial switch eff_tool() {
 	case .Freehand:
 		v := int(smoothing * 10)
 		if oslider("Smoothing", 120, &v, 5, 200, {"Smoothing", "How far the fitted curves may stray from your stroke, in screen pixels. Higher is smoother with fewer points, lower follows your hand more closely."}, "", 1, 10) do smoothing = f32(v) / 10
+	case .Eraser:
+		oslider("Size", 120, &eraser_size, ERASER_SIZE_MIN, ERASER_SIZE_MAX, {"Eraser size", "How wide the eraser is, in screen pixels, so zooming in gives a finer cut. [ and ] change it."}, "px")
+		ocheck("Pressure", &eraser_pressure, {"Pen pressure", "Press harder with a tablet pen to erase wider. With this off, or with a mouse, the width stays at the size above."})
 	case .Text:
 		options_text()
 	case .Node:
@@ -551,7 +562,8 @@ panel_status :: proc() {
 	if status_t > 0 {
 		oui_tip(oui.label(uictx, "msg", name_str(&status_msg), {id = "status-msg", class = "message"}), {"Messages", "Messages from the program appear here, such as why an action could not be done."})
 	} else {
-		oui_tip(oui.label(uictx, "msg", fmt.tprintf("%s   %s", TOOL_NAMES[cur_tool], tool_hint(cur_tool)), {id = "status-msg"}), tool_tip(cur_tool))
+		eff := eff_tool()
+		oui_tip(oui.label(uictx, "msg", fmt.tprintf("%s   %s", TOOL_NAMES[eff], tool_hint(eff)), {id = "status-msg"}), tool_tip(eff))
 	}
 	oui.separator(uictx, "sep0")
 	// the readout under the pointer changes every frame, so it is drawn by hand

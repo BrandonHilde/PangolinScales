@@ -146,7 +146,7 @@ node_drag_update :: proc(d: ^Doc, n: ^Node, p, sp: Vec2) {
 		q := mat_apply(iw, snap_pt(p))
 		move_handle(n.segs[:], tl.hs, q, ui.alt)
 		doc_changed(d)
-	case .None, .Move, .Scale, .Rotate, .Marquee, .Create, .Freehand, .Pen, .Gradient:
+	case .None, .Move, .Scale, .Rotate, .Marquee, .Create, .Freehand, .Pen, .Gradient, .Erase:
 	}
 }
 
@@ -504,7 +504,7 @@ node_overlay :: proc(d: ^Doc) {
 		}
 		if sb.closed && sb.b - sb.a > 1 do draw_line(to_screen(d, poly.pts[sb.b - 1]), to_screen(d, poly.pts[sb.a]), C_SEL)
 	}
-	control := cur_tool == .Control
+	control := eff_tool() == .Control
 	if control {
 		// anchors cannot be picked with this tool, so they are small marks under the control points
 		for g in n.segs {
@@ -584,6 +584,7 @@ pen_finish :: proc(keep: bool) {
 	if n != nil {
 		if keep && len(tl.pen_pts) >= 2 {
 			if pen_closed do n.fill = cur_fill
+			node_fit_gradients(n)
 			sel_set(d, n)
 		} else {
 			if p := node_parent(d.root, n); p != nil {
@@ -732,6 +733,7 @@ tool_freehand :: proc(d: ^Doc, p, sp: Vec2, pressed, over: bool) {
 		path_close(&n.segs)
 		n.fill = cur_fill
 	}
+	node_fit_gradients(n)
 	append(&d.root.children, n)
 	sel_set(d, n)
 	doc_changed(d)

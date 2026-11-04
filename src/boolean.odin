@@ -67,7 +67,6 @@ Bout :: struct {
 	used:           bool,
 }
 
-@(private = "file")
 bez_point :: proc(pts: [][2]f64, t: f64) -> [2]f64 {
 	tmp: [4][2]f64
 	n := len(pts)
@@ -81,7 +80,6 @@ bez_point :: proc(pts: [][2]f64, t: f64) -> [2]f64 {
 }
 
 // Control points of the part of a Bezier between t0 and t1 (reversed when t0 > t1).
-@(private = "file")
 bez_slice :: proc(pts: [][2]f64, t0, t1: f64) -> [4][2]f64 {
 	if t0 > t1 {
 		r := bez_slice(pts, t1, t0)
@@ -322,8 +320,11 @@ merge_edges :: proc(pieces: []Bedge) -> (recs: [dynamic]Brec, merged: bool) {
 }
 
 @(private = "file")
-classify :: proc(recs: []Brec, op: Bool_Op) -> (out: [dynamic]Bout, changed: bool) {
+classify :: proc(recs: []Brec, op: Bool_Op, a_even_odd: bool) -> (out: [dynamic]Bout, changed: bool) {
 	n := len(recs)
+	in_a :: proc(w: int, even_odd: bool) -> bool {
+		return even_odd ? w & 1 != 0 : w != 0
+	}
 	// bucket by y extent so ray casts only look at edges that can cross the ray
 	min_y, max_y := max(i64), min(i64)
 	for r in recs {
@@ -388,8 +389,8 @@ classify :: proc(recs: []Brec, op: Bool_Op) -> (out: [dynamic]Bout, changed: boo
 			cE = e.bx < e.ax ? 1 : -1
 			neg_is_left = e.bx < e.ax
 		}
-		in_neg := bool_pred(op, wA + cE * e.dA != 0, wB + cE * e.dB != 0)
-		in_pos := bool_pred(op, wA != 0, wB != 0)
+		in_neg := bool_pred(op, in_a(wA + cE * e.dA, a_even_odd), wB + cE * e.dB != 0)
+		in_pos := bool_pred(op, in_a(wA, a_even_odd), wB != 0)
 		if in_neg == in_pos {
 			changed = true
 			continue
@@ -539,7 +540,8 @@ loop_to_path :: proc(loop: []int, edges: []Bout, sources: []Bsrc, out: ^Path) {
 }
 
 // Combines two paths. `changed` is false when nothing needed to change (then `result` is a copy of a + b).
-path_boolean :: proc(a, b: []Seg, op: Bool_Op) -> (result: Path, changed: bool) {
+// `a_even_odd` fills `a` with the even-odd rule. The result looks right with either rule.
+path_boolean :: proc(a, b: []Seg, op: Bool_Op, a_even_odd := false) -> (result: Path, changed: bool) {
 	sources := make([dynamic]Bsrc, context.temp_allocator)
 	edges := make([dynamic]Bedge, context.temp_allocator)
 	cid := 0
@@ -548,9 +550,17 @@ path_boolean :: proc(a, b: []Seg, op: Bool_Op) -> (result: Path, changed: bool) 
 	if len(edges) == 0 do return {}, len(a) + len(b) > 0
 	pieces, did_split := split_edges(edges[:])
 	defer delete(pieces)
+	// a split snaps to the grid, which moves the edge a little and can make it cross another: repeat until none do,
+	// or the links between edges come out broken
+	for pass := 0; pass < 8; pass += 1 {
+		again, split_more := split_edges(pieces[:])
+		delete(pieces)
+		pieces = again
+		if !split_more do break
+	}
 	recs, merged := merge_edges(pieces[:])
 	defer delete(recs)
-	out, class_changed := classify(recs[:], op)
+	out, class_changed := classify(recs[:], op, a_even_odd)
 	defer delete(out)
 	changed = did_split || merged || class_changed
 	if !changed {

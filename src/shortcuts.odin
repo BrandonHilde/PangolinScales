@@ -94,6 +94,7 @@ shortcuts_update :: proc() {
 	case shift && key_hit(.A): set_tool(.Control)
 	case key_hit(.A): set_tool(.Node)
 	case key_hit(.B), key_hit(.F): set_tool(.Freehand) // F was its key once, and still works
+	case key_hit(.E): set_tool(.Eraser)
 	case key_hit(.P): set_tool(.Pen)
 	case key_hit(.R): set_tool(.Rect)
 	case key_hit(.O): set_tool(.Ellipse)
@@ -106,6 +107,11 @@ shortcuts_update :: proc() {
 	case key_hit(.MINUS), key_hit(.KP_SUBTRACT): run_cmd(.Zoom_Out)
 	}
 
+	// the same keys as the brushes in the other tools; in a font they step through the glyphs
+	if eff_tool() == .Eraser && d.kind != .Font {
+		if key_hit(.LEFT_BRACKET) do eraser_size = max(eraser_size - max(eraser_size / 5, 1), ERASER_SIZE_MIN)
+		if key_hit(.RIGHT_BRACKET) do eraser_size = min(eraser_size + max(eraser_size / 5, 1), ERASER_SIZE_MAX)
+	}
 	if cur_tool == .Pen {
 		if key_hit(.ENTER) || key_hit(.ESCAPE) do pen_finish(true)
 		if key_hit(.BACKSPACE) do pen_undo_point(d)
@@ -131,6 +137,7 @@ shortcuts_update :: proc() {
 		return
 	}
 	if key_hit(.ESCAPE) {
+		if tl.kind == .Erase do eraser_end(d) // what is already erased stays, as one undo step
 		clear(&d.sel)
 		tl_reset()
 	}

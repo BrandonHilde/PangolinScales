@@ -55,6 +55,8 @@ Cmd :: enum {
 	Simplify,
 	Offset_Out,
 	Offset_In,
+	Change_Fill,
+	Change_Stroke,
 	Text_To_Outlines,
 	Fit_View,
 	Actual_Size,
@@ -262,6 +264,10 @@ run_cmd :: proc(c: Cmd) {
 		cmd_reverse(d)
 	case .Close_Or_Open:
 		cmd_close_or_open(d)
+	case .Change_Fill:
+		cmd_change_paint(d, false)
+	case .Change_Stroke:
+		cmd_change_paint(d, true)
 	case .Simplify:
 		cmd_simplify(d)
 	case .Offset_Out:

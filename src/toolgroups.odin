@@ -8,7 +8,8 @@ import "core:strings"
 // (or the one last used from it); pressing it again cycles through the group's tools.
 // The single-key tool shortcuts (V, P, R ...) keep working; a group hotkey on the same key wins.
 // Groups can also hold path operations (union, offset ...): buttons that act on the selection at once.
-// The hotkey of a group with operations but no tools runs the operation last used from it.
+// The hotkey of a group with operations but no tools runs the operation last used from it. In a group with tools
+// it steps through the tools, and Change Fill and Change Stroke take their turn after them.
 // Switches (Grid, Snap, Onion Skin) sit among the tools and flip on and off.
 // A group holding colors instead is a color group: its hotkey steps the fill color, of the selection or for new
 // shapes, and leaves the tool alone.
@@ -22,8 +23,10 @@ Tool_Group :: struct {
 	last:  Tool, // last tool picked from this group
 	ops:   [dynamic]Cmd, // path operations (from PATH_OPS)
 	last_op: Cmd, // last operation run from this group
+	turn_op: Cmd, // where the hotkey's rotation is when it is on an operation, not on the current tool (op_takes_turn)
 	colors: [dynamic]Color, // a color group holds nothing else
 	name:  Name, // empty: "Group"
+	pen_eraser: bool, // the pen's eraser end uses this group's last tool (at most one group)
 }
 
 // Path operations a group can hold, with the selection size they need.
@@ -49,6 +52,8 @@ PATH_OPS := [?]Path_Op {
 	{.Object_To_Path, .To_Path, "Object to Path", 1},
 	{.Stroke_To_Path, .Stroke_Path, "Stroke to Path", 1},
 	{.Toggle_Close_Paths, .Close_Paths, "Close Open Paths", 0},
+	{.Change_Fill, .Change_Fill, "Change Fill", 0},
+	{.Change_Stroke, .Change_Stroke, "Change Stroke", 0},
 }
 
 path_op :: proc(c: Cmd) -> (Path_Op, bool) {
@@ -70,6 +75,12 @@ path_op_enabled :: proc(op: Path_Op) -> bool {
 group_run_op :: proc(gi: int, c: Cmd) {
 	if c != .Toggle_Close_Paths do tool_groups[gi].last_op = c
 	run_cmd(c)
+}
+
+// Operations a hotkey can land on while it steps through a group's tools. Only ones that are safe to run in passing
+// and can be stepped back: Simplify or Union would change a drawing just by being on the way to the next tool.
+op_takes_turn :: proc(c: Cmd) -> bool {
+	return c == .Change_Fill || c == .Change_Stroke
 }
 
 group_has_op :: proc(g: ^Tool_Group, c: Cmd) -> bool {
@@ -115,7 +126,28 @@ group_add_colors :: proc(g: ^Tool_Group, colors: []Color) {
 }
 
 group_title :: proc(g: ^Tool_Group) -> string {
-	return g.name.n > 0 ? name_str(&g.name) : "Group"
+	if g.name.n > 0 do return name_str(&g.name)
+	return g.pen_eraser ? "Pen" : "Group"
+}
+
+// The tool the pen's eraser end uses, if a group is assigned to it. Switches can't be drawn with.
+pen_eraser_group_tool :: proc() -> (Tool, bool) {
+	for &g in tool_groups {
+		if !g.pen_eraser do continue
+		if !tool_is_toggle(g.last) && tool_group_has(&g, g.last) do return g.last, true
+		for t in g.tools {
+			if !tool_is_toggle(t) do return t, true
+		}
+	}
+	return {}, false
+}
+
+// Makes group `gi` the pen eraser's, or none if it already is.
+group_set_pen_eraser :: proc(gi: int) {
+	on := !tool_groups[gi].pen_eraser
+	if on && gi == active_group do active_group = -1
+	for &o in tool_groups do o.pen_eraser = false
+	tool_groups[gi].pen_eraser = on
 }
 
 // Group names go into the preferences file, whose fields are split on : and ;
@@ -129,11 +161,12 @@ group_clean_name :: proc(s: string) -> string {
 
 // Group the current tool belongs to: the active group if it holds the tool, else the first that does.
 current_group :: proc() -> int {
-	if active_group >= 0 && active_group < len(tool_groups) && tool_group_has(&tool_groups[active_group], cur_tool) {
-		return active_group
+	if active_group >= 0 && active_group < len(tool_groups) {
+		g := &tool_groups[active_group]
+		if !g.pen_eraser && tool_group_has(g, cur_tool) do return active_group
 	}
 	for &g, i in tool_groups {
-		if tool_group_has(&g, cur_tool) do return i
+		if !g.pen_eraser && tool_group_has(&g, cur_tool) do return i
 	}
 	return -1
 }
@@ -173,7 +206,7 @@ tool_groups_default :: proc() {
 	}
 	options_switch_on = false
 	add("Select", .ONE, .Select, .Node, .Control)
-	add("Draw", .TWO, .Pen, .Freehand, .Line)
+	add("Draw", .TWO, .Pen, .Freehand, .Line, .Eraser)
 	add("Shapes", .THREE, .Rect, .Ellipse)
 	add("Text", .FOUR, .Text, .Picker)
 	add("View", .FIVE, .Hand, .Zoom, .Grid, .Snap)
@@ -214,12 +247,33 @@ tool_group_activate :: proc(gi: int) {
 		}
 		return
 	}
-	if current_group() == gi {
+	if g.pen_eraser {
+		// only changes the pen's eraser end, never the current tool
+		next := tools[0]
 		for t, i in tools {
-			if t == cur_tool {
-				select_tool_in_group(tools[(i + 1) % n], gi)
-				return
+			if t == g.last do next = tools[(i + 1) % n]
+		}
+		g.last = next
+		return
+	}
+	if current_group() == gi {
+		// Change Fill and Change Stroke take their turn after the tools; landing on one runs it once
+		turns := make([dynamic]Cmd, context.temp_allocator)
+		for c in g.ops do if op_takes_turn(c) do append(&turns, c)
+		at := -1
+		for c, i in turns do if c == g.turn_op do at = n + i
+		if at < 0 {
+			for t, i in tools do if t == cur_tool do at = i
+		}
+		if at >= 0 {
+			next := (at + 1) % (n + len(turns))
+			if next < n {
+				select_tool_in_group(tools[next], gi)
+			} else {
+				g.turn_op = turns[next - n]
+				group_run_op(gi, g.turn_op)
 			}
+			return
 		}
 	}
 	pick := tools[0]
@@ -284,9 +338,9 @@ key_name :: proc(k: KeyboardKey) -> string {
 	return "?"
 }
 
-// Preferences: "groups=<key>:<Tool>,<Tool>:<name>:<Cmd>,<Cmd>[:<color>,<color>];<key>:..." (key = key code, 0 for
-// none; tools and path operations by name; colors as RRGGBB, and the field only when there are any, so a group
-// without them reads the same as in older files).
+// Preferences: "groups=<key>:<Tool>,<Tool>:<name>:<Cmd>,<Cmd>[:<color>,<color>[:1]];<key>:..." (key = key code, 0 for
+// none; tools and path operations by name; colors as RRGGBB, and the field only when there are any or the 1 follows,
+// which marks the pen eraser's group, so any other group reads the same as in older files).
 tool_groups_serialize :: proc() -> string {
 	sb := strings.builder_make(context.temp_allocator)
 	for &g, i in tool_groups {
@@ -294,10 +348,11 @@ tool_groups_serialize :: proc() -> string {
 		for t, j in g.tools do fmt.sbprintf(&sb, "%s%v", j > 0 ? "," : "", t)
 		fmt.sbprintf(&sb, ":%s:", name_str(&g.name))
 		for c, j in g.ops do fmt.sbprintf(&sb, "%s%v", j > 0 ? "," : "", c)
-		if len(g.colors) > 0 {
+		if len(g.colors) > 0 || g.pen_eraser {
 			strings.write_byte(&sb, ':')
 			for c, j in g.colors do fmt.sbprintf(&sb, "%s%02x%02x%02x", j > 0 ? "," : "", c.r, c.g, c.b)
 		}
+		if g.pen_eraser do strings.write_string(&sb, ":1")
 	}
 	return strings.to_string(sb)
 }
@@ -338,6 +393,11 @@ tool_groups_parse :: proc(s: string) {
 			}
 		}
 		if len(g.ops) > 0 do g.last_op = g.ops[0]
+		if len(fields) > 5 && fields[5] == "1" {
+			taken := false
+			for &o in tool_groups do taken ||= o.pen_eraser
+			g.pen_eraser = !taken
+		}
 		append(&tool_groups, g)
 	}
 }
@@ -394,6 +454,10 @@ panel_groups_bar :: proc(r: Rect) {
 			shown := active ? cur_tool : (tool_group_has(&g, g.last) && !tool_is_toggle(g.last) ? g.last : g.tools[0])
 			// a group of only switches shows its first one, lit while it is on
 			if tool_is_toggle(shown) do active = tool_toggle_on(shown)
+			if g.pen_eraser {
+				if pt, ok := pen_eraser_group_tool(); ok do shown = pt
+				active = pen_eraser_active()
+			}
 			shown_icon = TOOL_ICONS[shown]
 		} else {
 			op, _ := path_op(group_has_op(&g, g.last_op) ? g.last_op : g.ops[0])
@@ -407,6 +471,7 @@ panel_groups_bar :: proc(r: Rect) {
 		if x + cw > limit do break
 		cell := Rect{x, r.y + 3, cw, r.h - 6}
 		tip := key == "" ? Tip{title, "Click to use this group's tool, repeat its last operation, or step to its next color."} : Tip{fmt.tprintf("%s (%s)", title, key), "Click or press the key to use this group's tool, repeat its last operation, or step to its next color. Again steps to its next tool."}
+		if g.pen_eraser do tip.desc = "The tool on the pen's eraser end. Click or press the key to step through this group's tools."
 		clicked, _, hover := button_behavior(make_id(cell, "grpcell"), cell, tip)
 		if active {
 			draw_rrect(f32(cell.x), f32(cell.y), f32(cell.w), f32(cell.h), RADIUS, C_ACCENT_TINT)

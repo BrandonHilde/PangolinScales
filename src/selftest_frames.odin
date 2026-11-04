@@ -681,7 +681,6 @@ groups_more_selftest :: proc(t: ^Test_Run) {
 	set_tool(.Select)
 }
 
-@(private = "file")
 key :: proc(k: KeyboardKey, ctrl := false, shift := false, alt := false) {
 	gfx.key_pressed = {}
 	gfx.key_repeat = {}
@@ -709,7 +708,8 @@ keys_selftest :: proc(t: ^Test_Run) {
 	check(t, cur_tool == .Ellipse, "O is ellipse")
 	set_tool(.Select)
 	key(.E)
-	check(t, cur_tool == .Select, "E is free")
+	check(t, cur_tool == .Eraser, "E is the eraser")
+	set_tool(.Select)
 	for pair in ([?]struct {
 			k: KeyboardKey,
 			t: Tool,

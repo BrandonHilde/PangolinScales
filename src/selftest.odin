@@ -218,6 +218,8 @@ selftest :: proc() -> int {
 	reorder_selftest(&t)
 	font_edit_selftest(&t)
 	frames_selftest(&t)
+	eraser_selftest(&t)
+	change_paint_selftest(&t)
 	groups_more_selftest(&t)
 	keys_selftest(&t)
 	workspaces_selftest(&t)

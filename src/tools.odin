@@ -13,6 +13,7 @@ Tool :: enum {
 	Control,
 	Pen,
 	Freehand,
+	Eraser,
 	Rect,
 	Ellipse,
 	Line,
@@ -32,6 +33,7 @@ TOOL_NAMES := [Tool]string {
 	.Control  = "Control Points (Shift+A)",
 	.Pen      = "Pen (P)",
 	.Freehand = "Freehand (B)",
+	.Eraser   = "Eraser (E)",
 	.Rect     = "Rectangle (R)",
 	.Ellipse  = "Ellipse (O)",
 	.Line     = "Line (L)",
@@ -50,6 +52,7 @@ TOOL_ICONS := [Tool]Icon {
 	.Control  = .Control_Points,
 	.Pen      = .Pencil,
 	.Freehand = .Brush,
+	.Eraser   = .Eraser,
 	.Rect     = .Rect,
 	.Ellipse  = .Ellipse,
 	.Line     = .Line,
@@ -94,6 +97,7 @@ Drag_Kind :: enum {
 	Freehand,
 	Pen,
 	Gradient,
+	Erase,
 }
 
 Orig :: struct {
@@ -103,6 +107,8 @@ Orig :: struct {
 
 Tool_State :: struct {
 	kind:        Drag_Kind,
+	stand_in:    bool, // this gesture is using another tool than cur_tool: the pen's eraser end
+	stand_tool:  Tool,
 	start, cur:  Vec2, // document space
 	start_scr:   Vec2,
 	moved:       bool,
@@ -138,6 +144,7 @@ tl_reset :: proc() {
 
 // Drops any half-finished gesture or editing session (tool switch, document switch).
 tools_cancel :: proc() {
+	if tl.kind == .Erase && doc != nil do eraser_end(doc)
 	tl_reset()
 	pen_finish(false)
 	text_finish()
@@ -152,6 +159,7 @@ set_tool :: proc(t: Tool) {
 		return
 	}
 	options_switch_on = false // the options bar goes back to the tool's settings
+	for &g in tool_groups do g.turn_op = .None // a group's hotkey carries on from this tool
 	if t != cur_tool {
 		// the two point editing tools work on the same path
 		keep := is_point_tool(t) && is_point_tool(cur_tool) ? tl.edit_uid : 0
@@ -163,6 +171,21 @@ set_tool :: proc(t: Tool) {
 
 is_point_tool :: proc(t: Tool) -> bool {
 	return t == .Node || t == .Control
+}
+
+// The tool in effect right now: the pen's eraser end can stand in for the current one. A gesture keeps the tool it
+// began with, whichever end of the pen is reported as it ends.
+eff_tool :: proc() -> Tool {
+	if tl.kind != .None do return tl.stand_in ? tl.stand_tool : cur_tool
+	if pen_eraser_active() && !text_editing() {
+		if t, ok := pen_eraser_group_tool(); ok do return t
+		// with no group assigned it erases with any tool that works on shapes
+		#partial switch cur_tool {
+		case .Select, .Node, .Control, .Pen, .Freehand, .Rect, .Ellipse, .Line:
+			return .Eraser
+		}
+	}
+	return cur_tool
 }
 
 push_once :: proc(d: ^Doc) {
@@ -309,14 +332,15 @@ viewport_update :: proc(vp: Rect) {
 	}
 	if over && ui.wheel_h != 0 do d.ox += ui.wheel_h * 40
 	// middle drag, or space / Hand tool + left drag, pans
-	panning := ui.down[2] || (ui.down[0] && tl.kind == .None && (cur_tool == .Hand || IsKeyDown(.SPACE)) && over)
+	hand := eff_tool() == .Hand
+	panning := ui.down[2] || (ui.down[0] && tl.kind == .None && (hand || IsKeyDown(.SPACE)) && over)
 	if panning && over || (panning && ui.active_id == 0 && tl.kind == .None) {
 		d.ox += f32(ui.mx - ui.pmx)
 		d.oy += f32(ui.my - ui.pmy)
 		ui.cursor = .RESIZE_ALL
 		return
 	}
-	if cur_tool == .Hand && over {
+	if hand && over {
 		ui.cursor = .RESIZE_ALL
 	}
 	tools_input(d, vp, over, sp)
@@ -355,12 +379,16 @@ tools_input :: proc(d: ^Doc, vp: Rect, over: bool, sp: Vec2) {
 	p := to_doc(d, sp)
 	pressed := ui.pressed[0] && over
 	if pressed do stop_playback() // the animation would pull the frame out from under the gesture
+	t := eff_tool()
+	if pressed && tl.kind == .None {
+		tl.stand_in, tl.stand_tool = t != cur_tool, t
+	}
 	if text_editing() {
 		text_update(d, p, pressed)
 		// the text tool still takes presses on the edited text, to drag it around
 		if tl.text_uid != 0 && cur_tool != .Text do return
 	}
-	switch cur_tool {
+	switch t {
 	case .Select:
 		tool_select(d, p, sp, pressed, over)
 	case .Node:
@@ -371,8 +399,10 @@ tools_input :: proc(d: ^Doc, vp: Rect, over: bool, sp: Vec2) {
 		tool_pen(d, p, sp, pressed, over)
 	case .Freehand:
 		tool_freehand(d, p, sp, pressed, over)
+	case .Eraser:
+		tool_eraser(d, p, pressed, over)
 	case .Rect, .Ellipse, .Line:
-		tool_shape(d, p, sp, pressed, over)
+		tool_shape(d, t, p, sp, pressed, over)
 	case .Text:
 		tool_text(d, p, sp, pressed, over)
 	case .Picker:
@@ -506,7 +536,7 @@ tool_select :: proc(d: ^Doc, p, sp: Vec2, pressed, over: bool) {
 				cur_fill, cur_stroke = prop_target == 0 ? gp^ : cur_fill, prop_target == 1 ? gp^ : cur_stroke
 			}
 		}
-	case .None, .Marquee, .Create, .Anchor, .Handle, .Freehand, .Pen:
+	case .None, .Marquee, .Create, .Anchor, .Handle, .Freehand, .Pen, .Erase:
 	}
 }
 
@@ -552,7 +582,7 @@ marquee_select :: proc(d: ^Doc, a, b: Vec2) {
 
 // Shape tools ---------------------------------------------------------------------------------------------
 
-tool_shape :: proc(d: ^Doc, p, sp: Vec2, pressed, over: bool) {
+tool_shape :: proc(d: ^Doc, tool: Tool, p, sp: Vec2, pressed, over: bool) {
 	if over do ui.cursor = .CROSSHAIR
 	if pressed {
 		tl.kind = .Create
@@ -576,9 +606,9 @@ tool_shape :: proc(d: ^Doc, p, sp: Vec2, pressed, over: bool) {
 	push_once(d)
 	var_n: ^Node
 	if tl.create_uid == 0 {
-		kind := cur_tool == .Rect ? Node_Kind.Rect : (cur_tool == .Ellipse ? Node_Kind.Ellipse : Node_Kind.Path)
+		kind := tool == .Rect ? Node_Kind.Rect : (tool == .Ellipse ? Node_Kind.Ellipse : Node_Kind.Path)
 		var_n = new_shape(d, kind)
-		if cur_tool == .Line {
+		if tool == .Line {
 			name_set(&var_n.name, "Line")
 			var_n.fill = paint_none()
 			if var_n.stroke.kind == .None do var_n.stroke = paint_solid({40, 30, 24, 255})
@@ -590,7 +620,7 @@ tool_shape :: proc(d: ^Doc, p, sp: Vec2, pressed, over: bool) {
 	}
 	if var_n == nil do return
 	a, b := tl.start, q
-	if cur_tool == .Line {
+	if tool == .Line {
 		if ui.shift {
 			dv := b - a
 			ang := math.round(math.atan2(dv.y, dv.x) / deg2rad(15)) * deg2rad(15)
@@ -599,6 +629,7 @@ tool_shape :: proc(d: ^Doc, p, sp: Vec2, pressed, over: bool) {
 		clear(&var_n.segs)
 		path_move(&var_n.segs, a)
 		path_line(&var_n.segs, b)
+		node_fit_gradients(var_n)
 		doc_changed(d)
 		return
 	}
@@ -613,12 +644,13 @@ tool_shape :: proc(d: ^Doc, p, sp: Vec2, pressed, over: bool) {
 		x0, y0 = a.x - dx, a.y - dy
 	}
 	lx, ly, hx, hy := min(x0, x1), min(y0, y1), max(x0, x1), max(y0, y1)
-	if cur_tool == .Rect {
+	if tool == .Rect {
 		var_n.x, var_n.y, var_n.w, var_n.h = lx, ly, hx - lx, hy - ly
 	} else {
 		var_n.x, var_n.y = (lx + hx) / 2, (ly + hy) / 2
 		var_n.w, var_n.h = (hx - lx) / 2, (hy - ly) / 2
 	}
+	node_fit_gradients(var_n)
 	doc_changed(d)
 }
 
@@ -668,8 +700,9 @@ overlay_draw :: proc(vp: Rect) {
 			draw_rect(max(d.ox, f32(vp.x)), math.round(y), min(d.w * d.zoom, f32(vp.x + vp.w) - max(d.ox, f32(vp.x))), 1, Color{120, 130, 150, 60})
 		}
 	}
+	tool := eff_tool()
 	// selection
-	if !is_point_tool(cur_tool) && cur_tool != .Pen {
+	if !is_point_tool(tool) && tool != .Pen {
 		nodes := sel_nodes(d)
 		for n in nodes {
 			b := node_doc_bounds(d, n)
@@ -677,7 +710,7 @@ overlay_draw :: proc(vp: Rect) {
 			a, c := to_screen(d, {b.x0, b.y0}), to_screen(d, {b.x1, b.y1})
 			outline_rect(Rect{i32(a.x), i32(a.y), i32(c.x - a.x), i32(c.y - a.y)}, Color{60, 160, 255, 120})
 		}
-		if len(nodes) > 0 && (cur_tool == .Select) {
+		if len(nodes) > 0 && (tool == .Select) {
 			b := sel_bounds(d)
 			if !bounds_empty(b) {
 				a, c := to_screen(d, {b.x0, b.y0}), to_screen(d, {b.x1, b.y1})
@@ -692,7 +725,7 @@ overlay_draw :: proc(vp: Rect) {
 		fill_rect(r, Color{60, 160, 255, 30})
 		outline_rect(r, C_SEL)
 	}
-	if cur_tool == .Select {
+	if tool == .Select {
 		if gn, gp := grad_target(d); gn != nil {
 			a, b := grad_points(d, gn, gp)
 			draw_line(a, b, Color{255, 255, 255, 200})
@@ -701,8 +734,9 @@ overlay_draw :: proc(vp: Rect) {
 			draw_handle_dot(b, Color{255, 255, 255, 255})
 		}
 	}
-	if is_point_tool(cur_tool) do node_overlay(d)
-	if cur_tool == .Pen do pen_overlay(d)
+	if is_point_tool(tool) do node_overlay(d)
+	if tool == .Pen do pen_overlay(d)
+	if tool == .Eraser && in_rect(vp, ui.mx, ui.my) && !files_dragging() do eraser_cursor(d)
 	if tl.kind == .Freehand {
 		for i in 1 ..< len(tl.free_pts) {
 			draw_line(to_screen(d, tl.free_pts[i - 1]), to_screen(d, tl.free_pts[i]), Color{246, 170, 104, 200})
