@@ -16,7 +16,7 @@ Render :: struct {
 	version: int,
 	zoom:    f32,
 	ox, oy:  f32,
-	scale:   i32,
+	scale:   f32,
 	valid:   bool,
 	tmp:     Polys,
 	tmp2:    Polys,
@@ -95,15 +95,17 @@ node_render_segs :: proc(n: ^Node) -> []Seg {
 
 // Viewport render -----------------------------------------------------------------------------------------
 
-view_matrix :: proc(d: ^Doc, vp: Rect, scale: i32) -> Mat {
-	s := f32(scale)
-	return Mat{d.zoom * s, 0, 0, d.zoom * s, (d.ox - f32(vp.x)) * s, (d.oy - f32(vp.y)) * s}
+// `x`, `y`: the logical position of the framebuffer's corner on the screen.
+view_matrix :: proc(d: ^Doc, x, y, s: f32) -> Mat {
+	return Mat{d.zoom * s, 0, 0, d.zoom * s, (d.ox - x) * s, (d.oy - y) * s}
 }
 
 render_viewport :: proc(d: ^Doc, vp: Rect) {
+	if vp.w <= 0 || vp.h <= 0 do return
 	s := ui.scale
-	w, h := int(vp.w) * int(s), int(vp.h) * int(s)
-	if w <= 0 || h <= 0 do return
+	// the framebuffer covers whole physical pixels, so it maps one to one onto the screen at any scale
+	x, y, lw, lh := snap_box(f32(vp.x), f32(vp.y), f32(vp.w), f32(vp.h))
+	w, h := int(math.round(lw * s)), int(math.round(lh * s))
 	same := rnd.valid && rnd.doc == d && rnd.version == d.version && rnd.zoom == d.zoom && rnd.ox == d.ox && rnd.oy == d.oy && rnd.scale == s && rnd.w == w && rnd.h == h
 	if !same {
 		if rnd.w != w || rnd.h != h {
@@ -115,15 +117,13 @@ render_viewport :: proc(d: ^Doc, vp: Rect) {
 			rnd.w, rnd.h = w, h
 		}
 		for &c in rnd.fb do c = {}
-		render_doc_to(d, rnd.fb, w, h, view_matrix(d, vp, s), &rnd.r, true)
+		render_doc_to(d, rnd.fb, w, h, view_matrix(d, x, y, s), &rnd.r, true)
 		tex_update(rnd.tex, rnd.fb)
 		rnd.doc, rnd.version, rnd.zoom, rnd.ox, rnd.oy, rnd.scale, rnd.valid = d, d.version, d.zoom, d.ox, d.oy, s, true
 	}
-	draw_tex(rnd.tex, {0, 0, f32(w), f32(h)}, {f32(vp.x), f32(vp.y), f32(vp.w), f32(vp.h)})
+	draw_tex(rnd.tex, {0, 0, f32(w), f32(h)}, {x, y, lw, lh})
 }
 
 render_invalidate :: proc() {
 	rnd.valid = false
 }
-
-_ :: math

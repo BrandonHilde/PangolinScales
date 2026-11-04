@@ -195,6 +195,7 @@ menu_build :: proc(idx: int) {
 		item("Grid", cmd = .Toggle_Grid, checked = show_grid)
 		item("Snap to Grid", cmd = .Toggle_Snap, checked = snap_grid)
 		item("Canvas Mode", cmd = .Toggle_Canvas_Mode, checked = canvas_mode)
+		item("Interface Scale...", cmd = .Interface_Scale)
 		popup_sep()
 		item("Load Tracing Image...", cmd = .Trace_Load)
 		item("Tracing Image More Visible", cmd = .Trace_More)

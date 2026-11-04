@@ -215,10 +215,13 @@ gfx_time :: proc() -> f64 {
 	return f64(sdl.GetPerformanceCounter() - gfx.t0) / f64(sdl.GetPerformanceFrequency())
 }
 
-// The display the window opened on, in pixels.
-gfx_monitor_height :: proc() -> int {
-	dm := sdl.GetDesktopDisplayMode(sdl.GetPrimaryDisplay())
-	return dm != nil ? int(dm.h) : 1080
+// The display the window is on now: its height in physical pixels, and the scale set for it in the system's display settings.
+gfx_display_info :: proc() -> (height: int, system_scale: f32) {
+	id := sdl.GetDisplayForWindow(gfx.win)
+	if id == 0 do id = sdl.GetPrimaryDisplay()
+	dm := sdl.GetDesktopDisplayMode(id)
+	height = dm != nil ? int(f32(dm.h) * max(dm.pixel_density, 1)) : 1080
+	return height, sdl.GetDisplayContentScale(id)
 }
 
 gfx_set_title :: proc(s: string) {
@@ -478,11 +481,11 @@ gfx_show_cursor :: proc(show: bool) {
 
 // Frame ----------------------------------------------------------------------
 
-gfx_set_scale :: proc(s: i32) {
-	if f32(s) != gfx.scale {
+gfx_set_scale :: proc(s: f32) {
+	if s != gfx.scale {
 		shape_clear_cache()
 	}
-	gfx.scale = f32(s)
+	gfx.scale = s
 	sdl.SetRenderScale(gfx.ren, gfx.scale, gfx.scale)
 }
 
@@ -538,10 +541,22 @@ set_draw_color :: #force_inline proc(c: Color) {
 	sdl.SetRenderDrawColor(gfx.ren, c.r, c.g, c.b, c.a)
 }
 
+// A box with its edges on whole physical pixels, at least one pixel wide and tall, so edges stay crisp and
+// hairlines show at fractional UI scales.
+snap_box :: proc(x, y, w, h: f32) -> (sx, sy, sw, sh: f32) {
+	s := gfx.scale
+	x0, y0 := math.round(x * s), math.round(y * s)
+	x1, y1 := math.round((x + w) * s), math.round((y + h) * s)
+	if w > 0 do x1 = max(x1, x0 + 1)
+	if h > 0 do y1 = max(y1, y0 + 1)
+	return x0 / s, y0 / s, (x1 - x0) / s, (y1 - y0) / s
+}
+
 draw_rect :: proc(x, y, w, h: f32, c: Color) {
 	if c.a == 0 || w <= 0 || h <= 0 do return
 	set_draw_color(c)
-	r := sdl.FRect{x, y, w, h}
+	sx, sy, sw, sh := snap_box(x, y, w, h)
+	r := sdl.FRect{sx, sy, sw, sh}
 	sdl.RenderFillRect(gfx.ren, &r)
 }
 
@@ -614,7 +629,9 @@ tex_update_rect :: proc(t: Texture, x, y, w, h: int, pix: [^]Color, stride: int)
 draw_tex :: proc(t: Texture, src: sdl.FRect, dst: sdl.FRect, tint := WHITE) {
 	sdl.SetTextureColorMod(t.t, tint.r, tint.g, tint.b)
 	sdl.SetTextureAlphaMod(t.t, tint.a)
-	s, d := src, dst
+	s := src
+	d: sdl.FRect
+	d.x, d.y, d.w, d.h = snap_box(dst.x, dst.y, dst.w, dst.h)
 	sdl.RenderTexture(gfx.ren, t.t, &s, &d)
 }
 
@@ -742,10 +759,17 @@ snap :: #force_inline proc(v: f32) -> f32 {
 	return math.round(v * gfx.scale) / gfx.scale
 }
 
-draw_rrect :: proc(x, y, w, h, radius: f32, c: Color) {
-	if c.a == 0 || w <= 0 || h <= 0 do return
+// A corner radius in whole physical pixels that fits a box already snapped to them.
+rrect_radius :: proc(w, h, radius: f32) -> i32 {
 	s := gfx.scale
-	R := i32(math.round(min(radius, min(w, h) / 2) * s))
+	return i32(min(math.round(radius * s), math.floor(math.round(min(w, h) * s) / 2)))
+}
+
+draw_rrect :: proc(x_in, y_in, w_in, h_in, radius: f32, c: Color) {
+	if c.a == 0 || w_in <= 0 || h_in <= 0 do return
+	s := gfx.scale
+	x, y, w, h := snap_box(x_in, y_in, w_in, h_in)
+	R := rrect_radius(w, h, radius)
 	if R <= 0 {
 		draw_rect(x, y, w, h, c)
 		return
@@ -756,10 +780,11 @@ draw_rrect :: proc(x, y, w, h, radius: f32, c: Color) {
 }
 
 // Border `th` physical pixels thick.
-draw_rrect_outline :: proc(x, y, w, h, radius: f32, c: Color, th: i32 = 1) {
-	if c.a == 0 || w <= 0 || h <= 0 do return
+draw_rrect_outline :: proc(x_in, y_in, w_in, h_in, radius: f32, c: Color, th: i32 = 1) {
+	if c.a == 0 || w_in <= 0 || h_in <= 0 do return
 	s := gfx.scale
-	R := i32(math.round(min(radius, min(w, h) / 2) * s))
+	x, y, w, h := snap_box(x_in, y_in, w_in, h_in)
+	R := rrect_radius(w, h, radius)
 	tt := f32(th) / s
 	if R <= 0 {
 		draw_rect(x, y, w, tt, c)

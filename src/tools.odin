@@ -67,7 +67,7 @@ snap_pt :: proc(p: Vec2) -> Vec2 {
 }
 
 pointer :: proc() -> Vec2 {
-	return ui.ptr / f32(ui.scale)
+	return ui.ptr / ui.scale
 }
 
 // Gesture state -------------------------------------------------------------------------------------------
@@ -305,6 +305,13 @@ viewport_update :: proc(vp: Rect) {
 		ui.cursor = .RESIZE_ALL
 	}
 	tools_input(d, vp, over, sp)
+}
+
+// The interface scale is changing: every drawing stays the same size and in the same place on the screen.
+views_keep_on_screen :: proc(old_scale, new_scale: f32) {
+	for d in docs {
+		if d.view_init do zoom_at(d, {}, old_scale / new_scale)
+	}
 }
 
 zoom_at :: proc(d: ^Doc, sp: Vec2, f: f32) {

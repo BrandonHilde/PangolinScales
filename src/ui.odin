@@ -43,7 +43,7 @@ shade :: proc(c: Color, k: f32) -> Color {
 
 UI :: struct {
 	w, h:                int, // logical window size
-	scale:               i32,
+	scale:               f32, // physical pixels per logical pixel
 	mx, my:              i32,
 	pmx, pmy:            i32,
 	ptr:                 Vec2, // pointer in window pixels at full precision (the pen tip while the pen drives)
@@ -194,7 +194,9 @@ clip_end :: proc() {
 
 icon :: proc(ic: Icon, x, y: i32, c: Color, size: i32 = ICON_SIZE) {
 	tex, px := icon_atlas(size)
-	draw_tex(tex, {f32(int(ic) * int(px)), 0, f32(px), f32(px)}, {f32(x), f32(y), f32(size), f32(size)}, c)
+	// one atlas pixel to one screen pixel, whatever the scale
+	ls := f32(px) / gfx.scale
+	draw_tex(tex, {f32(int(ic) * int(px)), 0, f32(px), f32(px)}, {f32(x), f32(y), ls, ls}, c)
 }
 
 icon_centered :: proc(ic: Icon, r: Rect, c: Color, size: i32 = ICON_SIZE) {
@@ -246,8 +248,8 @@ ui_begin_frame :: proc() {
 	}
 	ui.ptr = m
 	ui.pmx, ui.pmy = ui.mx, ui.my
-	ui.mx = i32(m.x) / ui.scale
-	ui.my = i32(m.y) / ui.scale
+	ui.mx = i32(m.x / ui.scale)
+	ui.my = i32(m.y / ui.scale)
 	for i in 0 ..< 3 {
 		ui.down[i] = gfx.m_down[i]
 		ui.pressed[i] = gfx.m_pressed[i]
@@ -539,8 +541,12 @@ slider_chunk :: proc(v, lo, hi: int, suffix: string, curve: f32, dir := 0) -> in
 	return clamp(n * step, lo, hi)
 }
 
-// `tint` colours the filled part (the colour picker uses its channel colours).
-slider :: proc(r: Rect, v: ^int, lo, hi: int, label: string, tip: Tip, suffix := "", curve: f32 = 1, div := 1, tint_in := Color{}) -> bool {
+// `tint` colours the filled part (the colour picker uses its channel colours). The value stays on multiples of
+// `step` counted from `lo`.
+slider :: proc(r: Rect, v: ^int, lo, hi: int, label: string, tip: Tip, suffix := "", curve: f32 = 1, div := 1, tint_in := Color{}, step := 1) -> bool {
+	on_step :: proc(v, lo, hi, step: int) -> int {
+		return clamp(lo + (clamp(v, lo, hi) - lo + step / 2) / step * step, lo, hi)
+	}
 	tint := tint_in == {} ? C_ACCENT : tint_in
 	id := make_id(r, label)
 	_, held, hover := button_behavior(id, r, tip)
@@ -553,18 +559,20 @@ slider :: proc(r: Rect, v: ^int, lo, hi: int, label: string, tip: Tip, suffix :=
 		nv := lo + int(t * f32(hi - lo) + 0.5)
 		nv = clamp(nv, lo, hi)
 		if ui.shift do nv = slider_chunk(nv, lo, hi, suffix, curve)
+		nv = on_step(nv, lo, hi, step)
 		if nv != v^ {
 			v^ = nv
 			changed = true
 		}
 	}
 	if hover && ui.wheel != 0 {
-		step := 1
+		wheel_step := step
 		if curve != 1 {
-			step = max(v^ / 10, 1)
+			wheel_step = max(v^ / 10, 1)
 		}
-		nv := clamp(v^ + (ui.wheel > 0 ? step : -step), lo, hi)
+		nv := clamp(v^ + (ui.wheel > 0 ? wheel_step : -wheel_step), lo, hi)
 		if ui.shift do nv = slider_chunk(v^, lo, hi, suffix, curve, ui.wheel > 0 ? 1 : -1)
+		nv = on_step(nv, lo, hi, step)
 		if nv != v^ {
 			v^ = nv
 			changed = true

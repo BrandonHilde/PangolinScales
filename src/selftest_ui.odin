@@ -640,6 +640,34 @@ tool_groups_selftest :: proc(t: ^Test_Run) {
 	tool_groups_parse("0::Ops:Union,Pen,Union,Offset_In")
 	check(t, len(tool_groups[0].ops) == 2 && tool_groups[0].ops[1] == .Offset_In, "only known path operations load, once each")
 
+	// interface scale: automatic sizes by display, never below the system's setting, and always fits the window
+	check(t, ui_scale_auto(1080, 1) == 150, "a 1080p display gets 150%")
+	check(t, ui_scale_auto(1440, 1) == 200 && ui_scale_auto(2160, 1) == 300, "larger displays scale up")
+	check(t, ui_scale_auto(600, 1) == 100, "small displays stay at 100%")
+	check(t, ui_scale_auto(4320, 1) == UI_SCALE_MAX, "the automatic scale stops at the maximum")
+	check(t, ui_scale_auto(1080, 2) == 200, "the system's display scale is a lower limit")
+	check(t, ui_scale_fit(300, 1920, 1009) == 175, "a scale too large for the window comes down in steps")
+	check(t, ui_scale_fit(150, 3840, 2160) == 150, "a scale with room is kept")
+	check(t, ui_scale_fit(75, 900, 560) == 75, "a small scale is kept in a small window")
+	check(t, ui_scale_fit(300, 900, 560) == 100, "the smallest window falls back to 100%")
+	saved_pref := ui_scale_pref
+	prefs_parse("ui_scale=2\n")
+	check(t, ui_scale_pref == 200, "older preference files counted whole multiples")
+	prefs_parse("ui_scale=0\n")
+	check(t, ui_scale_pref == 0, "older preference files keep the automatic size")
+	prefs_parse("ui_scale_percent=163\n")
+	check(t, ui_scale_pref == 175, "a saved scale snaps to a step")
+	prefs_parse("ui_scale_percent=0\n")
+	check(t, ui_scale_pref == 0, "0 is the automatic size")
+	ui_scale_pref = saved_pref
+	sd := doc_new(.Svg, "scale", 400, 300)
+	sd.zoom, sd.ox, sd.oy, sd.view_init = 0.8, 120, 60, true
+	append(&docs, sd)
+	before := to_screen(sd, {100, 50}) * 1.5
+	views_keep_on_screen(1.5, 2.25)
+	check(t, v_len(to_screen(sd, {100, 50}) * 2.25 - before) < 0.01, "a drawing stays put on the screen when the interface scale changes")
+	pop(&docs)
+
 	// tooltips: every command and tool explains itself, long text wraps, and the innermost control wins
 	for c in Cmd {
 		if c != .None do check(t, len(cmd_help(c)) > 15, "every command has help text")

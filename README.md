@@ -24,6 +24,8 @@ default): pressing it picks the tool last used from that group, pressing it agai
 - Groups are saved in `scales.cfg`.
 - **Canvas mode** (Tab, or the button at the right of the menu bar) hides the toolbar, tabs and side panels; a bar along the
   bottom shows each group as `[key] -> current tool`.
+- **Interface scale** (View > Interface Scale) sets the size of the whole interface from 75% to 400%. Until you choose a
+  size it follows the screen the window is on, and it comes down when a window is too small to hold it.
 
 The fill / stroke chips below the groups show the selection's paints (or those new shapes get); click one to edit it in
 Properties.
@@ -105,7 +107,7 @@ dialogs, menus). Icons are SVG files in `assets/icons`, drawn by the document re
 behave like a font in CSS (`font-family: icons`), so `color` and `font-size` style them like text.
 
 ## Developer flags
-`--selftest` (tests), `--demo` (sample drawing), `--shot file.png` (screenshot after a few frames), `--size WxH`, `--scale N`,
+`--selftest` (tests), `--demo` (sample drawing), `--shot file.png` (screenshot after a few frames), `--size WxH`, `--scale N` (interface scale for this run, 1.5 is 150%),
 `--render in.svg out.png [scale]` (headless SVG to PNG), `--icon-sheet out.png` (every icon at several sizes),
 `--clicks "frame:x,y;..."` (left clicks at window pixels on those frames, for checking the interface with `--shot`),
 `--hover "frame:x,y"` (rests the pointer there from that frame on, for checking tooltips with `--shot` and a later `--shot-frame`),

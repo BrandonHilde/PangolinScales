@@ -1,6 +1,7 @@
 package pangolin
 
 import "core:fmt"
+import "core:math"
 import "core:strconv"
 import "core:strings"
 
@@ -14,7 +15,7 @@ import oui "odinui:odinui"
 Thumb :: struct {
 	tex:       Texture,
 	ver, mver: int,
-	scale:     i32,
+	scale:     f32,
 }
 
 font_viewport :: proc(vp: Rect) {
@@ -73,7 +74,7 @@ glyph_thumb :: proc(f: ^Font_Doc, idx, cell: i32) -> Texture {
 	th, ok := f.thumbs[int(idx)]
 	if ok && th.ver == f.glyphs[idx].ver && th.mver == f.metrics_ver && th.scale == ui.scale && tex_valid(th.tex) do return th.tex
 	if ok do tex_destroy(&th.tex)
-	s := int(cell * ui.scale)
+	s := int(math.round(f32(cell) * ui.scale))
 	pix := make([]Color, s * s, context.temp_allocator)
 	r: Raster
 	raster_init(&r, s, s)
@@ -296,11 +297,11 @@ panel_font_props :: proc(d: ^Doc, r: Rect) {
 font_preview :: proc(f: ^Font_Doc, r: Rect) {
 	fill_rect(r, C_PANEL_DK)
 	outline_rect(r, C_RING)
-	pw, ph := int(r.w * ui.scale), int(r.h * ui.scale)
+	pw, ph := int(math.round(f32(r.w) * ui.scale)), int(math.round(f32(r.h) * ui.scale))
 	str := name_str(&f.preview)
 	h := 0
 	for ch in str do h = h * 31 + int(ch)
-	key := [3]int{f.ver, int(ui.scale), h + pw}
+	key := [3]int{f.ver, int(ui.scale * 100), h + pw}
 	if f.prev_key != key || !tex_valid(f.prev_tex) {
 		tex_destroy(&f.prev_tex)
 		pix := make([]Color, pw * ph, context.temp_allocator)
@@ -308,7 +309,7 @@ font_preview :: proc(f: ^Font_Doc, r: Rect) {
 		raster_init(&rs, pw, ph)
 		em := f32(f.asc - f.desc)
 		k := f32(ph) * 0.62 / max(em, 1)
-		x := f32(6 * ui.scale)
+		x := 6 * ui.scale
 		by := f32(ph) * 0.14 + f32(f.asc) * k
 		paint := paint_solid(Color{230, 232, 240, 255})
 		for ch in str {

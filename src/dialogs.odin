@@ -14,6 +14,7 @@ Dialog_Kind :: enum {
 	About,
 	Group_Rename,
 	Font,
+	Interface_Scale,
 }
 
 Dialog :: struct {
@@ -56,7 +57,7 @@ dialog_open :: proc(k: Dialog_Kind) {
 		dialog.a, dialog.b = int(doc.w), int(doc.h)
 	case .Add_Glyphs:
 		dialog.a = 0
-	case .None, .Confirm_Close, .Message, .Shortcuts, .About, .Group_Rename, .Font:
+	case .None, .Confirm_Close, .Message, .Shortcuts, .About, .Group_Rename, .Font, .Interface_Scale:
 	}
 }
 
@@ -106,6 +107,34 @@ dialog_buttons :: proc(c: Rect, ok_tip: string, ok_label := "OK", cancel_label :
 row_int :: proc(c: Rect, y: i32, name: string, v: ^int, lo, hi: int, desc: string) {
 	tip_text(c.x, y + 3, name, C_TEXT, {name, desc})
 	field_int(Rect{c.x + 110, y, 70, 14}, v, lo, hi, {name, desc})
+}
+
+// The interface takes the new size when the slider is let go: this dialog would otherwise move out from under the pointer.
+// dialog.a is the slider's value and dialog.flag is set while it is being dragged.
+dlg_interface_scale :: proc() {
+	c := dialog_frame("Interface Scale", 300, 120)
+	SIZE_TIP :: "How large the whole interface is drawn: its text, icons and panels. Your drawing is not affected. Drag, or use the mouse wheel."
+	wanted := ui_scale_wanted()
+	if !dialog.flag do dialog.a = wanted
+	tip_text(c.x, c.y + 3, "Size", C_TEXT, {"Interface size", SIZE_TIP})
+	if slider(Rect{c.x + 110, c.y, c.w - 110, 14}, &dialog.a, UI_SCALE_MIN, UI_SCALE_MAX, "", {"Interface size", SIZE_TIP}, "%", step = UI_SCALE_STEP) {
+		dialog.flag = true
+	}
+	if dialog.flag && !ui.down[0] {
+		dialog.flag = false
+		ui_scale_arg, ui_scale_pref = 0, dialog.a
+		wanted = dialog.a
+	}
+	automatic := ui_scale_arg == 0 && ui_scale_pref == 0 && !dialog.flag
+	if checkbox(c.x, c.y + 22, "Size automatically", &automatic, {"Size automatically", "On: the interface sizes itself to the screen the window is on, including when you move it to another screen. Moving the slider turns this off and keeps the size you chose."}) {
+		ui_scale_arg, ui_scale_pref = 0, 0
+		if !automatic do ui_scale_pref = wanted
+	}
+	applied := int(ui.scale * 100 + 0.5)
+	note := automatic ? "Follows the screen this window is on." : "Stays this size on every screen."
+	if !dialog.flag && applied < wanted do note = fmt.tprintf("This window only has room for %d%%.", applied)
+	text(c.x, c.y + 42, note, C_TEXT_DIM)
+	if ok, _ := dialog_buttons(c, "Close this window (Enter or Esc).", "Close", ""); ok do dialog_close()
 }
 
 dialogs_run :: proc() {
@@ -243,5 +272,7 @@ dialogs_run :: proc() {
 		dlg_group_rename()
 	case .Font:
 		dlg_font()
+	case .Interface_Scale:
+		dlg_interface_scale()
 	}
 }

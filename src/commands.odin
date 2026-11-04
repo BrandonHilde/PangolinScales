@@ -64,6 +64,7 @@ Cmd :: enum {
 	Toggle_Snap,
 	Toggle_Canvas_Mode,
 	Toggle_Close_Paths,
+	Interface_Scale,
 	Reset_Tool_Groups,
 	Page_Size,
 	Fit_Page_To_Content,
@@ -130,7 +131,7 @@ clip_nodes: [dynamic]^Node
 
 run_cmd :: proc(c: Cmd) {
 	d := doc
-	if d == nil && c != .New && c != .Open && c != .Quit && c != .New_Font && c != .About && c != .Shortcuts do return
+	if d == nil && c != .New && c != .Open && c != .Quit && c != .New_Font && c != .About && c != .Shortcuts && c != .Interface_Scale do return
 	switch c {
 	case .None:
 	case .New:
@@ -273,6 +274,8 @@ run_cmd :: proc(c: Cmd) {
 		font_select_glyph(d, d.font.cur - 1)
 	case .Font_Next_Glyph:
 		font_select_glyph(d, d.font.cur + 1)
+	case .Interface_Scale:
+		dialog_open(.Interface_Scale)
 	case .Shortcuts:
 		dialog_open(.Shortcuts)
 	case .About:

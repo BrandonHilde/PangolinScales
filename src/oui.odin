@@ -96,7 +96,7 @@ oui_slot :: proc(key, name: string, arg := 0, class := "slot", style := "") -> ^
 // is up; keys only while one of its text fields has focus, so Space, Enter and the arrows keep
 // working as shortcuts.
 oui_begin_frame :: proc() {
-	oui.set_scale(uictx, f32(ui.scale))
+	oui.set_scale(uictx, ui.scale)
 	inp: oui.Input
 	inp.viewport = {f32(gfx.pw), f32(gfx.ph)}
 	inp.dt = ui.dt
@@ -240,16 +240,10 @@ icon_text :: proc(ic: Icon) -> string {
 
 // Backend ----------------------------------------------------------------------
 
-// A box snapped to whole physical pixels, at least one pixel wide and tall, so hairlines
-// (0.5px at 2x) always show and edges stay crisp.
+// Hairlines (0.5px at 2x) always show.
 @(private = "file")
 frect :: proc(r: olay.Rect) -> (x, y, w, h: f32) {
-	s := gfx.scale
-	x0, y0 := math.round(r.x * s), math.round(r.y * s)
-	x1, y1 := math.round((r.x + r.z) * s), math.round((r.y + r.w) * s)
-	if r.z > 0 do x1 = max(x1, x0 + 1)
-	if r.w > 0 do y1 = max(y1, y0 + 1)
-	return x0 / s, y0 / s, (x1 - x0) / s, (y1 - y0) / s
+	return snap_box(r.x, r.y, r.z, r.w)
 }
 
 @(private = "file")

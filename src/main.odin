@@ -5,20 +5,6 @@ import "core:os"
 import "core:strconv"
 import "core:strings"
 
-choose_scale :: proc() -> i32 {
-	if ui_scale_pref > 0 {
-		return i32(ui_scale_pref)
-	}
-	mh := gfx_monitor_height()
-	switch {
-	case mh >= 2000:
-		return 3
-	case mh >= 1350:
-		return 2
-	}
-	return 1
-}
-
 main :: proc() {
 	shot_path := ""
 	win_w, win_h := 0, 0
@@ -39,7 +25,7 @@ main :: proc() {
 			shot_path = args[i + 1]
 			i += 1
 		case a == "--scale" && i + 1 < len(args):
-			ui_scale_pref, _ = strconv.parse_int(args[i + 1])
+			if v, ok := strconv.parse_f32(args[i + 1]); ok && v > 0 do ui_scale_arg = ui_scale_snap(int(v * 100 + 0.5))
 			i += 1
 		case a == "--size" && i + 1 < len(args):
 			wh := strings.split(args[i + 1], "x", context.temp_allocator)
@@ -141,12 +127,11 @@ main :: proc() {
 		}
 
 		sw, sh := int(gfx.pw), int(gfx.ph)
-		ui.scale = choose_scale()
-		for ui.scale > 1 && (sw / int(ui.scale) < 900 || sh / int(ui.scale) < 560) {
-			ui.scale -= 1
-		}
+		scale := f32(ui_scale_fit(ui_scale_wanted(), sw, sh)) / 100
+		if ui.scale > 0 && scale != ui.scale do views_keep_on_screen(ui.scale, scale)
+		ui.scale = scale
 		gfx_set_scale(ui.scale)
-		ui.w, ui.h = max(sw / int(ui.scale), 1), max(sh / int(ui.scale), 1)
+		ui.w, ui.h = max(int(f32(sw) / ui.scale), 1), max(int(f32(sh) / ui.scale), 1)
 
 		ui_begin_frame()
 		ui.input_layer = (dialog.kind != .None ? 2 : 0) + (popup.open ? 1 : 0)

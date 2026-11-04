@@ -128,6 +128,8 @@ cmd_help :: proc(c: Cmd) -> string {
 		return "Hide the toolbar, tabs and side panels to give the drawing more room. A bar along the bottom keeps the tool groups."
 	case .Toggle_Close_Paths:
 		return "Off: open paths stay open, and Union joins them without adding a line. On: Union, Subtract, Intersect, Exclude and Offset close them with a straight line, and a freehand stroke ending near its start closes itself."
+	case .Interface_Scale:
+		return "Make the whole interface larger or smaller, or let it size itself to fit your screen."
 	case .Reset_Tool_Groups:
 		return "Replace your tool groups with the default set. Any changes you made to the groups are lost."
 	case .Page_Size:
@@ -203,7 +205,7 @@ menu_title_tip :: proc(title: string) -> Tip {
 	case "Path":   desc = "Combine shapes, convert objects to paths, and simplify or offset them."
 	case "Text":   desc = "Convert text to outlines."
 	case "Font":   desc = "Add glyphs, clean up outlines, step through glyphs and export the font."
-	case "View":   desc = "Zoom, the grid, canvas mode and the tracing image."
+	case "View":   desc = "Zoom, the grid, canvas mode, the interface scale and the tracing image."
 	case "Help":   desc = "Keyboard shortcuts and information about the program."
 	}
 	return {"", desc}
