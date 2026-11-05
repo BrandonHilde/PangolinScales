@@ -7,15 +7,17 @@ import "core:math"
 // Digitized Curves"). Appends cubic segments to `out`; the caller has already moved to pts[0].
 // ---------------------------------------------------------------------------
 
-fit_curve :: proc(pts: []Vec2, err: f32, out: ^Path) {
+// `start_tangent`, if given, is the direction the curve leaves pts[0] in, so it can carry on from another one.
+// `end_tangent`, if given, points back into the curve from its last point, so another one can carry on from it.
+fit_curve :: proc(pts: []Vec2, err: f32, out: ^Path, start_tangent := Vec2{}, end_tangent := Vec2{}) {
 	// drop repeated points
 	d := make([dynamic]Vec2, context.temp_allocator)
 	for p in pts {
 		if len(d) == 0 || v_len(p - d[len(d) - 1]) > 1e-4 do append(&d, p)
 	}
 	if len(d) < 2 do return
-	t1 := v_norm(d[1] - d[0])
-	t2 := v_norm(d[len(d) - 2] - d[len(d) - 1])
+	t1 := start_tangent != {} ? start_tangent : v_norm(d[1] - d[0])
+	t2 := end_tangent != {} ? end_tangent : v_norm(d[len(d) - 2] - d[len(d) - 1])
 	fit_cubic(d[:], t1, t2, err, out)
 }
 
@@ -88,7 +90,11 @@ gen_bezier :: proc(d: []Vec2, u: []f32, t1, t2: Vec2) -> [4]Vec2 {
 		alpha2 = (c[0][0] * x[1] - c[1][0] * x[0]) / det
 	}
 	eps := 1e-6 * seg
-	if alpha1 < eps || alpha2 < eps {
+	// The error is only measured at the points, and a very long handle can loop far out between them while passing
+	// close to all of them. A handle longer than the stretch it covers is never a good fit.
+	arc: f32
+	for i in 1 ..< n do arc += v_len(d[i] - d[i - 1])
+	if alpha1 < eps || alpha2 < eps || alpha1 > arc || alpha2 > arc {
 		alpha1 = seg / 3
 		alpha2 = alpha1
 	}

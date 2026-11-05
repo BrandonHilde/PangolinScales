@@ -27,6 +27,7 @@ prefs_save :: proc() {
 	fmt.sbprintf(&sb, "onion=%d\nonion_prev=%d\nonion_next=%d\nonion_alpha=%d\n", onion ? 1 : 0, onion_prev, onion_next, onion_alpha)
 	fmt.sbprintf(&sb, "navigator=%d\n", show_navigator ? 1 : 0)
 	fmt.sbprintf(&sb, "eraser_size=%d\neraser_pressure=%d\n", eraser_size, eraser_pressure ? 1 : 0)
+	fmt.sbprintf(&sb, "sculpt_size=%d\nsculpt_strength=%d\nsculpt_pressure=%d\n", sculpt_size, sculpt_strength, sculpt_pressure ? 1 : 0)
 	files_prefs_write(&sb)
 	write_file(prefs_path(), transmute([]u8)strings.to_string(sb))
 }
@@ -69,6 +70,12 @@ prefs_parse :: proc(contents: string) {
 			eraser_size = clamp(val, ERASER_SIZE_MIN, ERASER_SIZE_MAX)
 		case "eraser_pressure":
 			eraser_pressure = val != 0
+		case "sculpt_size":
+			sculpt_size = clamp(val, SCULPT_SIZE_MIN, SCULPT_SIZE_MAX)
+		case "sculpt_strength":
+			sculpt_strength = clamp(val, 5, 100)
+		case "sculpt_pressure":
+			sculpt_pressure = val != 0
 		}
 	}
 }

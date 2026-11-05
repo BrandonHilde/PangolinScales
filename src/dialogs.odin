@@ -181,6 +181,8 @@ dialogs_run :: proc() {
 			{"V / A / Shift+A / P / B", "select / node edit / control points / pen / freehand"},
 			{"R / O / L / T / I", "rectangle / ellipse / line / text / eyedropper"},
 			{"E, [ / ]", "eraser, smaller / bigger eraser"},
+			{"U, [ / ]", "sculpt, smaller / bigger brush"},
+			{"X", "extend a line from its end"},
 			{"H, Space (hold), middle drag", "pan"},
 			{"Wheel, Ctrl+= / Ctrl+-", "zoom in and out"},
 			{"Ctrl+0 / Ctrl+1 / Ctrl+2", "fit to window / 100% / 200%"},

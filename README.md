@@ -83,6 +83,10 @@ are on. The Frame menu and the timeline add, duplicate, delete and move frames.
 ## SVG editing
 - **Tools**: select (move, scale, rotate), node edit, pen (click for a straight line, drag for a curve; click the first point to close straight, drag it to close with a curve), freehand
   (fits smooth Bezier curves to your stroke), eraser, rectangle, ellipse, line, text, eyedropper, hand, zoom.
+- **Sculpt** (U): a brush that moves the lines and edges under it, fading towards its edge. Corners stay corners, the moved part is fitted with
+  a few curves when the stroke ends, and what the brush didn't reach keeps its exact points. Size, Strength and pen pressure are in the options bar.
+- **Extend** (X): open lines show a mark on each end; press on one and drag to keep drawing from it, as part of the same object. A stroke that
+  carries on in about the same direction joins without a kink. With Close Open Paths on, ending on the line's other end closes it.
 - **Eraser** (E): drag over a shape to cut part of it away. Filled shapes keep a smooth, editable cut edge, and the rest of their outline
   keeps its original curves. Lines and outlines without a fill are split, so they stay lines. With a selection, only the selected objects
   are erased. The eraser end of a pen uses it from any tool that works on shapes, pressure sets the width, and a tool group's
@@ -132,6 +136,8 @@ are on. The Frame menu and the timeline add, duplicate, delete and move frames.
 | V / A / Shift+A / P / B | select / node edit / control points / pen / freehand (F also works) |
 | R / O / L / T / I | rectangle / ellipse / line / text / eyedropper |
 | E, [ / ] | eraser, smaller / bigger eraser |
+| U, [ / ] | sculpt, smaller / bigger brush |
+| X | extend a line from its end |
 | H, Space (hold), middle drag | pan |
 | Wheel, Ctrl+= / Ctrl+- (or + / -) | zoom |
 | Ctrl+0 / Ctrl+1 / Ctrl+2 | fit to window / 100% / 200% |

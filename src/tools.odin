@@ -14,6 +14,8 @@ Tool :: enum {
 	Pen,
 	Freehand,
 	Eraser,
+	Sculpt,
+	Extend,
 	Rect,
 	Ellipse,
 	Line,
@@ -34,6 +36,8 @@ TOOL_NAMES := [Tool]string {
 	.Pen      = "Pen (P)",
 	.Freehand = "Freehand (B)",
 	.Eraser   = "Eraser (E)",
+	.Sculpt   = "Sculpt (U)",
+	.Extend   = "Extend (X)",
 	.Rect     = "Rectangle (R)",
 	.Ellipse  = "Ellipse (O)",
 	.Line     = "Line (L)",
@@ -53,6 +57,8 @@ TOOL_ICONS := [Tool]Icon {
 	.Pen      = .Pencil,
 	.Freehand = .Brush,
 	.Eraser   = .Eraser,
+	.Sculpt   = .Sculpt,
+	.Extend   = .Extend,
 	.Rect     = .Rect,
 	.Ellipse  = .Ellipse,
 	.Line     = .Line,
@@ -98,6 +104,8 @@ Drag_Kind :: enum {
 	Pen,
 	Gradient,
 	Erase,
+	Sculpt,
+	Extend,
 }
 
 Orig :: struct {
@@ -145,6 +153,7 @@ tl_reset :: proc() {
 // Drops any half-finished gesture or editing session (tool switch, document switch).
 tools_cancel :: proc() {
 	if tl.kind == .Erase && doc != nil do eraser_end(doc)
+	if tl.kind == .Sculpt && doc != nil do sculpt_end(doc)
 	tl_reset()
 	pen_finish(false)
 	text_finish()
@@ -181,7 +190,7 @@ eff_tool :: proc() -> Tool {
 		if t, ok := pen_eraser_group_tool(); ok do return t
 		// with no group assigned it erases with any tool that works on shapes
 		#partial switch cur_tool {
-		case .Select, .Node, .Control, .Pen, .Freehand, .Rect, .Ellipse, .Line:
+		case .Select, .Node, .Control, .Pen, .Freehand, .Sculpt, .Extend, .Rect, .Ellipse, .Line:
 			return .Eraser
 		}
 	}
@@ -401,6 +410,10 @@ tools_input :: proc(d: ^Doc, vp: Rect, over: bool, sp: Vec2) {
 		tool_freehand(d, p, sp, pressed, over)
 	case .Eraser:
 		tool_eraser(d, p, pressed, over)
+	case .Sculpt:
+		tool_sculpt(d, p, pressed, over)
+	case .Extend:
+		tool_extend(d, p, sp, pressed, over)
 	case .Rect, .Ellipse, .Line:
 		tool_shape(d, t, p, sp, pressed, over)
 	case .Text:
@@ -536,7 +549,7 @@ tool_select :: proc(d: ^Doc, p, sp: Vec2, pressed, over: bool) {
 				cur_fill, cur_stroke = prop_target == 0 ? gp^ : cur_fill, prop_target == 1 ? gp^ : cur_stroke
 			}
 		}
-	case .None, .Marquee, .Create, .Anchor, .Handle, .Freehand, .Pen, .Erase:
+	case .None, .Marquee, .Create, .Anchor, .Handle, .Freehand, .Pen, .Erase, .Sculpt, .Extend:
 	}
 }
 
@@ -737,7 +750,9 @@ overlay_draw :: proc(vp: Rect) {
 	if is_point_tool(tool) do node_overlay(d)
 	if tool == .Pen do pen_overlay(d)
 	if tool == .Eraser && in_rect(vp, ui.mx, ui.my) && !files_dragging() do eraser_cursor(d)
-	if tl.kind == .Freehand {
+	if tool == .Sculpt && in_rect(vp, ui.mx, ui.my) && !files_dragging() do sculpt_cursor(d)
+	if tool == .Extend do extend_overlay(d, vp)
+	if tl.kind == .Freehand || tl.kind == .Extend {
 		for i in 1 ..< len(tl.free_pts) {
 			draw_line(to_screen(d, tl.free_pts[i - 1]), to_screen(d, tl.free_pts[i]), Color{246, 170, 104, 200})
 		}

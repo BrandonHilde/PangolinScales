@@ -205,8 +205,8 @@ tool_groups_default :: proc() {
 		append(&tool_groups, g)
 	}
 	options_switch_on = false
-	add("Select", .ONE, .Select, .Node, .Control)
-	add("Draw", .TWO, .Pen, .Freehand, .Line, .Eraser)
+	add("Select", .ONE, .Select, .Node, .Control, .Sculpt)
+	add("Draw", .TWO, .Pen, .Freehand, .Line, .Eraser, .Extend)
 	add("Shapes", .THREE, .Rect, .Ellipse)
 	add("Text", .FOUR, .Text, .Picker)
 	add("View", .FIVE, .Hand, .Zoom, .Grid, .Snap)

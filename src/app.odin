@@ -539,6 +539,13 @@ panel_options :: proc() {
 	case .Freehand:
 		v := int(smoothing * 10)
 		if oslider("Smoothing", 120, &v, 5, 200, {"Smoothing", "How far the fitted curves may stray from your stroke, in screen pixels. Higher is smoother with fewer points, lower follows your hand more closely."}, "", 1, 10) do smoothing = f32(v) / 10
+	case .Sculpt:
+		oslider("Size", 120, &sculpt_size, SCULPT_SIZE_MIN, SCULPT_SIZE_MAX, {"Sculpt size", "How wide the brush is, in screen pixels, so zooming in gives finer control. [ and ] change it."}, "px")
+		oslider("Strength", 120, &sculpt_strength, 5, 100, {"Sculpt strength", "How much of the pointer's movement the outline follows. At 100% the middle of the brush keeps up with the pointer."}, "%")
+		ocheck("Pressure", &sculpt_pressure, {"Pen pressure", "Press harder with a tablet pen to move the outline further. With this off, or with a mouse, the strength stays as set above."})
+	case .Extend:
+		v := int(smoothing * 10)
+		if oslider("Smoothing", 120, &v, 5, 200, {"Smoothing", "How far the fitted curves may stray from your stroke, in screen pixels. It is shared with the Freehand tool."}, "", 1, 10) do smoothing = f32(v) / 10
 	case .Eraser:
 		oslider("Size", 120, &eraser_size, ERASER_SIZE_MIN, ERASER_SIZE_MAX, {"Eraser size", "How wide the eraser is, in screen pixels, so zooming in gives a finer cut. [ and ] change it."}, "px")
 		ocheck("Pressure", &eraser_pressure, {"Pen pressure", "Press harder with a tablet pen to erase wider. With this off, or with a mouse, the width stays at the size above."})

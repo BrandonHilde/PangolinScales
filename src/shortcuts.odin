@@ -95,6 +95,8 @@ shortcuts_update :: proc() {
 	case key_hit(.A): set_tool(.Node)
 	case key_hit(.B), key_hit(.F): set_tool(.Freehand) // F was its key once, and still works
 	case key_hit(.E): set_tool(.Eraser)
+	case key_hit(.U): set_tool(.Sculpt)
+	case key_hit(.X): set_tool(.Extend)
 	case key_hit(.P): set_tool(.Pen)
 	case key_hit(.R): set_tool(.Rect)
 	case key_hit(.O): set_tool(.Ellipse)
@@ -111,6 +113,10 @@ shortcuts_update :: proc() {
 	if eff_tool() == .Eraser && d.kind != .Font {
 		if key_hit(.LEFT_BRACKET) do eraser_size = max(eraser_size - max(eraser_size / 5, 1), ERASER_SIZE_MIN)
 		if key_hit(.RIGHT_BRACKET) do eraser_size = min(eraser_size + max(eraser_size / 5, 1), ERASER_SIZE_MAX)
+	}
+	if eff_tool() == .Sculpt && d.kind != .Font {
+		if key_hit(.LEFT_BRACKET) do sculpt_size = max(sculpt_size - max(sculpt_size / 5, 1), SCULPT_SIZE_MIN)
+		if key_hit(.RIGHT_BRACKET) do sculpt_size = min(sculpt_size + max(sculpt_size / 5, 1), SCULPT_SIZE_MAX)
 	}
 	if cur_tool == .Pen {
 		if key_hit(.ENTER) || key_hit(.ESCAPE) do pen_finish(true)
@@ -138,6 +144,7 @@ shortcuts_update :: proc() {
 	}
 	if key_hit(.ESCAPE) {
 		if tl.kind == .Erase do eraser_end(d) // what is already erased stays, as one undo step
+		if tl.kind == .Sculpt do sculpt_end(d)
 		clear(&d.sel)
 		tl_reset()
 	}

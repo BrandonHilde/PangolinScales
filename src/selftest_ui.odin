@@ -608,6 +608,8 @@ tool_groups_selftest :: proc(t: ^Test_Run) {
 	tool_group_activate(1)
 	check(t, cur_tool == .Eraser, "the eraser is in the draw group")
 	tool_group_activate(1)
+	check(t, cur_tool == .Extend, "and so is extend")
+	tool_group_activate(1)
 	check(t, cur_tool == .Pen, "cycling wraps around")
 	tool_group_activate(1)
 	tool_group_activate(0)

@@ -656,7 +656,7 @@ groups_more_selftest :: proc(t: ^Test_Run) {
 	check(t, r.fill.color == red && group_color_is_current(red) && !group_color_is_current(blue), "clicking a color in the group picks it")
 	s = tool_groups_serialize()
 	check(t, strings.contains(s, ":ff0000,00ff00,0000ff"), "colors are saved in the group's string")
-	check(t, strings.contains(s, "49:Select,Node,Control:Select:;"), "other groups are saved as before")
+	check(t, strings.contains(s, "49:Select,Node,Control,Sculpt:Select:;"), "other groups are saved as before")
 	tool_groups_parse(s)
 	cgl := tool_groups[len(tool_groups) - 1]
 	check(t, len(cgl.colors) == 3 && cgl.colors[2] == blue && cgl.key == .C && name_str(&cgl.name) == "Paint", "a color group round trip")

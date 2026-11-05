@@ -220,6 +220,7 @@ selftest :: proc() -> int {
 	frames_selftest(&t)
 	eraser_selftest(&t)
 	change_paint_selftest(&t)
+	sculpt_selftest(&t)
 	groups_more_selftest(&t)
 	keys_selftest(&t)
 	workspaces_selftest(&t)

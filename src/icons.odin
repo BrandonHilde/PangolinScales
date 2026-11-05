@@ -89,6 +89,8 @@ Icon :: enum {
 	Frame_Right,
 	Change_Fill,
 	Change_Stroke,
+	Sculpt,
+	Extend,
 }
 
 ICON_SVG := [Icon]string {
@@ -172,6 +174,8 @@ ICON_SVG := [Icon]string {
 	.Frame_Right = #load("../assets/icons/frame_right.svg", string),
 	.Change_Fill = #load("../assets/icons/change_fill.svg", string),
 	.Change_Stroke = #load("../assets/icons/change_stroke.svg", string),
+	.Sculpt = #load("../assets/icons/sculpt.svg", string),
+	.Extend = #load("../assets/icons/extend.svg", string),
 }
 
 @(private = "file")

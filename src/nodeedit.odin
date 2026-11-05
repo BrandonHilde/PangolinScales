@@ -146,7 +146,7 @@ node_drag_update :: proc(d: ^Doc, n: ^Node, p, sp: Vec2) {
 		q := mat_apply(iw, snap_pt(p))
 		move_handle(n.segs[:], tl.hs, q, ui.alt)
 		doc_changed(d)
-	case .None, .Move, .Scale, .Rotate, .Marquee, .Create, .Freehand, .Pen, .Gradient, .Erase:
+	case .None, .Move, .Scale, .Rotate, .Marquee, .Create, .Freehand, .Pen, .Gradient, .Erase, .Sculpt, .Extend:
 	}
 }
 

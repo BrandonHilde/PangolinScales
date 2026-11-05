@@ -96,8 +96,8 @@ workspace_builtin :: proc(i: int) {
 		tool_groups_default()
 	case 1:
 		// drawing with shapes and paths: the booleans and a set of colors close at hand
-		ws_group("Select", .ONE, .Select, .Node, .Picker)
-		ws_group("Draw", .TWO, .Pen, .Freehand, .Line, .Eraser, .Text)
+		ws_group("Select", .ONE, .Select, .Node, .Sculpt, .Picker)
+		ws_group("Draw", .TWO, .Pen, .Freehand, .Line, .Eraser, .Extend, .Text)
 		ws_group("Shapes", .THREE, .Rect, .Ellipse)
 		ws_ops("Path", .FOUR, .Union, .Subtract, .Intersect, .Exclude, .Combine, .Break_Apart)
 		colors := Tool_Group {
@@ -109,15 +109,15 @@ workspace_builtin :: proc(i: int) {
 		ws_group("View", .SIX, .Hand, .Zoom, .Grid, .Snap)
 	case 2:
 		// outlines: points first, the operations that clean them up, and a grid to snap to
-		ws_group("Points", .ONE, .Node, .Control, .Select)
+		ws_group("Points", .ONE, .Node, .Control, .Sculpt, .Select)
 		ws_group("Draw", .TWO, .Pen, .Line, .Eraser, .Rect, .Ellipse)
 		ws_ops("Outline", .THREE, .Union, .Subtract, .Intersect, .Reverse, .Close_Or_Open, .Simplify, .Offset_Out, .Offset_In)
 		ws_group("View", .FOUR, .Hand, .Zoom, .Grid, .Snap)
 	case 3:
 		// frame by frame: draw, clean up, flip through frames with the onion skin
-		ws_group("Draw", .ONE, .Freehand, .Eraser, .Pen, .Line, .Picker)
+		ws_group("Draw", .ONE, .Freehand, .Eraser, .Extend, .Pen, .Line, .Picker)
 		ws_group("Shapes", .TWO, .Rect, .Ellipse, .Text)
-		ws_group("Edit", .THREE, .Select, .Node)
+		ws_group("Edit", .THREE, .Select, .Node, .Sculpt)
 		ws_group("View", .FOUR, .Hand, .Zoom, .Onion, .Grid)
 	}
 	group_key_wait = -1
