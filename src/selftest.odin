@@ -221,6 +221,7 @@ selftest :: proc() -> int {
 	eraser_selftest(&t)
 	change_paint_selftest(&t)
 	sculpt_selftest(&t)
+	check(&t, icons_ok(), "the app icon is there at every size")
 	groups_more_selftest(&t)
 	keys_selftest(&t)
 	workspaces_selftest(&t)
