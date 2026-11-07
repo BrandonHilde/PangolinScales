@@ -36,3 +36,11 @@ macro_preview :: proc(r: Rect) {
 }
 
 macro_renamed :: proc(old, new: string) {}
+
+macro_snapshot :: proc() -> rawptr {
+	return nil
+}
+
+macro_restore :: proc(snap: rawptr) {}
+
+macro_snapshot_free :: proc(snap: rawptr) {}
