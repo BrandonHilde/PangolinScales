@@ -44,3 +44,7 @@ macro_snapshot :: proc() -> rawptr {
 macro_restore :: proc(snap: rawptr) {}
 
 macro_snapshot_free :: proc(snap: rawptr) {}
+
+macro_suggest :: proc(what: string) -> []string {
+	return nil
+}
