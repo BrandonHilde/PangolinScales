@@ -204,6 +204,10 @@ cmd_help :: proc(c: Cmd) -> string {
 		return "Save the current tool set-up to a .scws file, to back it up or use it on another computer."
 	case .Ws_First ..= .Ws_Last:
 		return "Switch to this saved workspace: its tool groups, with their hotkeys, operations and colors."
+	case .Recent_Clear:
+		return "Empty the list of recently opened and saved files in the File menu. The files themselves stay where they are."
+	case .Recent_First ..= .Recent_Last:
+		return "Open this file again. It is one you opened or saved lately."
 	}
 	return ""
 }

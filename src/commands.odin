@@ -12,6 +12,7 @@ Cmd :: enum {
 	Save,
 	Save_As,
 	Export,
+	Recent_Clear,
 	Close_Doc,
 	Quit,
 	Undo,
@@ -103,6 +104,9 @@ Cmd :: enum {
 	Ws_Export,
 	Ws_First,
 	Ws_Last = Ws_First + WS_MAX - 1,
+	// the File menu's recent files, in the order of `recent_files`
+	Recent_First,
+	Recent_Last = Recent_First + RECENT_FILES_MAX - 1,
 }
 
 shortcut_text :: proc(c: Cmd) -> string {
@@ -166,6 +170,10 @@ run_cmd :: proc(c: Cmd) {
 	if d == nil && c != .New && c != .Open && c != .Quit && c != .New_Font && c != .About && c != .Shortcuts && c != .UI_Scale do return
 	// a font has one frame per document, and its glyphs take their place
 	if d != nil && d.kind == .Font && c >= .Frame_New && c <= .Frame_Props do return
+	if c >= .Recent_First && c <= .Recent_Last {
+		recent_open(int(c) - int(Cmd.Recent_First))
+		return
+	}
 	if c >= .Ws_First && c <= .Ws_Last {
 		workspace_apply_index(int(c) - int(Cmd.Ws_First))
 		return
@@ -378,7 +386,10 @@ run_cmd :: proc(c: Cmd) {
 		workspace_import()
 	case .Ws_Export:
 		workspace_export()
-	case .Ws_First ..= .Ws_Last:
+	case .Ws_First ..= .Ws_Last, .Recent_First ..= .Recent_Last:
+	case .Recent_Clear:
+		recent_clear()
+		set_status("Cleared the recent files")
 	}
 }
 
@@ -390,6 +401,7 @@ open_path :: proc(path: string) {
 	case strings.has_suffix(low, ".svg"):
 		if d, ok := svg_load(path); ok {
 			add_doc(d)
+			recent_add(path)
 			if len(svg_skipped) > 0 {
 				set_statusf("Opened with %d unsupported element(s) skipped (e.g. <%s>)", len(svg_skipped), svg_skipped[0])
 			} else {
@@ -401,6 +413,7 @@ open_path :: proc(path: string) {
 	case strings.has_suffix(low, ".ttf"), strings.has_suffix(low, ".otf"):
 		if d, ok := font_open_doc(path); ok {
 			add_doc(d)
+			recent_add(path)
 			set_status("Font opened")
 		} else {
 			message("Open", fmt.tprintf("Could not read %s as a TrueType font.", path))
@@ -426,6 +439,7 @@ doc_save :: proc(d: ^Doc, as: bool) {
 	if svg_save(d, path) {
 		d.path = strings.clone(path)
 		d.modified = false
+		recent_add(path)
 		stem := path
 		if i := strings.last_index_any(stem, "/\\"); i >= 0 do stem = stem[i + 1:]
 		if i := strings.last_index_byte(stem, '.'); i > 0 do stem = stem[:i]

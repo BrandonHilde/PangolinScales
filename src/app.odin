@@ -116,6 +116,11 @@ menu_build :: proc(idx: int) {
 		item("New SVG...", cmd = .New)
 		item("New Font", cmd = .New_Font)
 		item("Open...", cmd = .Open)
+		if len(recent_files) > 0 {
+			popup_sep()
+			for f, i in recent_files do item(path_basename(f), cmd = Cmd(int(Cmd.Recent_First) + i), tip = f)
+			item("Clear Recent Files", cmd = .Recent_Clear)
+		}
 		popup_sep()
 		item("Save", cmd = .Save)
 		item("Save As...", cmd = .Save_As)
