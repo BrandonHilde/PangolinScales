@@ -291,7 +291,7 @@ panel_menubar :: proc() {
 		}
 	}
 	oui.element_leaf(uictx, "spacer", "spacer")
-	if c, _ := oui_icon_button("canvas-mode", .Canvas_Mode, cmd_tip("Canvas mode", .Toggle_Canvas_Mode), {lit = canvas_mode, enabled = true}); c {
+	if c, _ := oui_icon_button("canvas-mode", .Canvas_Mode, cmd_tip("Canvas mode", .Toggle_Canvas_Mode), {id = "canvas-mode", lit = canvas_mode, enabled = true}); c {
 		run_cmd(.Toggle_Canvas_Mode)
 	}
 	oui_tip(oui.label(uictx, "doc", doc_display_name(doc), {id = "doc-name"}), {"Current document", doc_status(doc)})

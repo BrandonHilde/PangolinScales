@@ -13,4 +13,5 @@ shots/
 *.dll
 scales.cfg
 workspaces/
+macros/
 src/shared_*.odin
