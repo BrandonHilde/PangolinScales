@@ -352,8 +352,10 @@ sculpt_selftest :: proc(t: ^Test_Run) {
 		bad := 0
 		for g in n.segs do if !finite(g.p) || !finite(g.c1) || !finite(g.c2) do bad += 1
 		check(t, bad == 0 && count_kind(n.segs[:], .Close) == 1, "with valid numbers, still closed")
+		uid := n.uid // undo frees n: look the object up again by its id
 		history_undo(d)
-		check(t, node_find(d.root, n.uid) == nil || node_find(d.root, n.uid).kind == .Rect, "and undo brings the rectangle back")
+		back := node_find(d.root, uid)
+		check(t, back == nil || back.kind == .Rect, "and undo brings the rectangle back")
 	}
 
 	// a smooth point stays smooth, zoomed out too, where the samples for fitting are far apart

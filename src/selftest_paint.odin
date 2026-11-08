@@ -162,8 +162,11 @@ change_paint_selftest :: proc(t: ^Test_Run) {
 		ui.time += 0.2
 		run_cmd(.Change_Fill)
 		check(t, len(d.undo) == before + 1, "quick presses are one undo step")
+		// undo frees the objects as they were and puts copies in their place: find it again by its id, taken first
+		uid := n.uid
 		history_undo(d)
-		check(t, node_find(d.root, n.uid).fill.kind == .Solid, "undo goes back before them")
+		back := node_find(d.root, uid)
+		check(t, back != nil && back.fill.kind == .Solid, "undo goes back before them")
 		clear(&d.sel)
 		before = len(d.undo)
 		ui.time += 5
