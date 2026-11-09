@@ -335,7 +335,7 @@ panel_tabs :: proc() {
 // Toolbar: tool groups -----------------------------------------------------------------------------------
 
 panel_toolbar :: proc() {
-	oui.element(uictx, "toolbar", "toolbar", {id = "toolbar"})
+	panel_element(.Toolbar, "toolbar", "toolbar")
 	defer oui.end(uictx)
 	rem_g, rem_t, rem_o, rem_c := -1, -1, -1, -1
 	OP_ITEM :: 1000 // popup values of path operations: OP_ITEM + index into PATH_OPS

@@ -23,7 +23,7 @@ obj_scroll: int
 prop_scroll: i32
 
 panel_right :: proc() {
-	oui.element(uictx, "right", "sidepanel", {id = "right"})
+	panel_element(.Right, "right", "sidepanel")
 	defer oui.end(uictx)
 	osection("objects-head", "Objects", "Everything in this document, frontmost at the top. Drag rows to change the stacking order or to move objects in and out of groups.")
 	oui_slot("objects", "objects")

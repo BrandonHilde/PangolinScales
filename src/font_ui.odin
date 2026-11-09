@@ -111,7 +111,7 @@ uni_buf: Name
 panel_font :: proc() {
 	d := doc
 	f := d.font
-	oui.element(uictx, "font", "sidepanel", {id = "font"})
+	panel_element(.Font, "font", "sidepanel")
 	defer oui.end(uictx)
 	osection("glyphs-head", "Glyphs", "Every character shape in this font. Click one to edit it on the canvas.")
 	oui_slot("glyph-grid", "glyph_grid")
