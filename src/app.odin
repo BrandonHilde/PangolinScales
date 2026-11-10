@@ -436,18 +436,19 @@ panel_toolbar :: proc() {
 				popup_begin(pid, oui_rect(add_node))
 				popup_grid(4)
 				if !is_colors {
+					popup_column("Tools")
 					for tool in Tool {
 						if !tool_group_has(&g, tool) do popup_item_icon(TOOL_NAMES[tool], int(tool), TOOL_ICONS[tool], TOOL_HELP[tool])
 					}
 					if len(g.ops) < len(PATH_OPS) {
-						popup_sep()
+						popup_column("Path operations")
 						for op, i in PATH_OPS {
 							if !group_has_op(&g, op.cmd) do popup_item_icon(path_op_tip(op), OP_ITEM + i, op.icon, cmd_help(op.cmd))
 						}
 					}
 				}
 				if !is_tools {
-					if !is_colors do popup_sep()
+					popup_column("Colors")
 					if fill := current_fill_color(); fill.a > 0 {
 						popup_item_swatch("Fill color", ADD_FILL_COLOR, fill)
 						popup.items[len(popup.items) - 1].tip = "Add the current fill color to this group."
