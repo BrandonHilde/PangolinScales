@@ -4,6 +4,7 @@
 # The installed copy keeps its own settings, workspaces and macros, next to the program, so it never shares them with
 # this folder's build. Run this again to update it (it can be running). ./install.sh --uninstall takes away the program,
 # its menu entry and its icons, and leaves its settings, workspaces and macros in that folder.
+# ./install.sh --no-build installs without building, for a copy made for another account (see below).
 set -e
 cd "$(dirname "$0")"
 APP=PangolinScales
@@ -30,7 +31,16 @@ if [ "$1" = "--uninstall" ]; then
 	exit 0
 fi
 
-sh ./build.sh
+# --no-build installs the program that is already here, built elsewhere: for another account on this computer,
+# copy this script, the program and assets/icon into a folder that account can read, and run it from there
+if [ "$1" = "--no-build" ]; then
+	if [ ! -x "$APP" ]; then
+		echo "There is no $APP here to install: build it first (sh build.sh)." >&2
+		exit 1
+	fi
+else
+	sh ./build.sh
+fi
 mkdir -p "$dest"
 # copied beside it, then renamed over it: that works even while the installed copy is running
 cp "$APP" "$dest/.$APP.new"

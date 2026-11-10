@@ -11,6 +11,11 @@ the code the Pangolin tools share ([PangolinShared](https://github.com/BrandonHi
 (`git submodule update --init`). Odin compiles one folder as one package, so the build scripts first copy the shared code into
 `src` as `shared_*.odin` (ignored by git: edit it in `libs/shared`). To build by hand, run that step yourself:
 `sh libs/shared/sync.sh` (or `libs\shared\sync.bat`), then `odin build src -out:PangolinScales -o:speed -collection:odinui=libs/odinui`.
+On Linux, `./install.sh` builds the program and installs it for your account: in `~/.local/opt/pangolin/PangolinScales`, with
+its own settings, workspaces and macros (apart from this folder's build), and in the application list with its icon.
+Run it again to update, or `./install.sh --uninstall` to remove it. To install a build made elsewhere (for another
+account on the computer, or without Odin), put `install.sh`, the `PangolinScales` program and `assets/icon` in one folder and
+run `sh install.sh --no-build` there.
 Drag `.svg`, `.ttf` or `.otf` files onto the window to open them.
 `PangolinScales --selftest` runs the headless test suite (on Windows use `PangolinScales-console.exe`, since the GUI build has no console).
 
