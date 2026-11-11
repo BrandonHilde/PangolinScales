@@ -337,6 +337,8 @@ panel_tabs :: proc() {
 panel_toolbar :: proc() {
 	panel_element(.Toolbar, "toolbar", "toolbar")
 	defer oui.end(uictx)
+	// the groups scroll when they outgrow the bar; the paint chips stay pinned below them
+	oui.scroll_begin(uictx, "groups-scroll", {node = {id = "groups-scroll"}})
 	rem_g, rem_t, rem_o, rem_c := -1, -1, -1, -1
 	OP_ITEM :: 1000 // popup values of path operations: OP_ITEM + index into PATH_OPS
 	ADD_FILL_COLOR :: 900
@@ -497,6 +499,7 @@ panel_toolbar :: proc() {
 			append(&tool_groups, Tool_Group{})
 		}
 	}
+	oui.scroll_end(uictx)
 	oui.separator(uictx, "chips-sep")
 	oui_slot("paint-chips", "paint_chips")
 }
