@@ -686,6 +686,8 @@ tool_groups_selftest :: proc(t: ^Test_Run) {
 		check(t, len(lines) == 1 && lines[0] == "aaa", "a short tooltip stays on one line")
 		lines = tooltip_wrap("aaaaaaaaaaaaaaaaaaaa bb", 75, measure)
 		check(t, len(lines) == 2 && lines[0] == "aaaaaaaaaaaaaaaaaaaa" && lines[1] == "bb", "a word wider than a line stays whole")
+		lines = tooltip_wrap("aaa\nbbb ccc ddd\n\n- e", 75, measure)
+		check(t, len(lines) == 5 && lines[0] == "aaa" && lines[1] == "bbb ccc" && lines[2] == "ddd" && lines[3] == "" && lines[4] == "- e", "a line break in a tooltip starts a new line, and the lines after it wrap too")
 
 		saved_id, saved_t, saved_tip := ui.hover_id, ui.hover_t, ui.tip
 		ui.hover_id, ui.hover_t, ui.tip, ui.tip_desc = 0, 0, {}, false
