@@ -19,6 +19,24 @@ eraser_pressure := true
 ERASER_SIZE_MIN :: 2
 ERASER_SIZE_MAX :: 200
 
+eraser_preset: Name // the eraser preset picked last (presets.odin)
+
+// size, pressure (0 or 1)
+eraser_builtins := [?]Preset_Builtin {
+	{name = "Fine", vals = {6, 1}},
+	{name = "Normal", vals = {20, 1}},
+	{name = "Wide", vals = {60, 1}},
+}
+
+eraser_to_ints :: proc() -> [2]int {
+	return {eraser_size, int(eraser_pressure)}
+}
+
+eraser_from_ints :: proc(v: []int) {
+	if len(v) > 0 do eraser_size = clamp(v[0], ERASER_SIZE_MIN, ERASER_SIZE_MAX)
+	if len(v) > 1 do eraser_pressure = v[1] != 0
+}
+
 @(private = "file")
 Erase_Pt :: struct {
 	p: Vec2,

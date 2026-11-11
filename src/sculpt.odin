@@ -17,6 +17,25 @@ sculpt_pressure := true
 
 SCULPT_SIZE_MIN :: 4
 SCULPT_SIZE_MAX :: 400
+
+sculpt_preset: Name // the sculpt preset picked last (presets.odin)
+
+// size, strength, pressure (0 or 1)
+sculpt_builtins := [?]Preset_Builtin {
+	{name = "Fine", vals = {24, 50, 1}},
+	{name = "Normal", vals = {60, 100, 1}},
+	{name = "Broad", vals = {160, 100, 1}},
+}
+
+sculpt_to_ints :: proc() -> [3]int {
+	return {sculpt_size, sculpt_strength, int(sculpt_pressure)}
+}
+
+sculpt_from_ints :: proc(v: []int) {
+	if len(v) > 0 do sculpt_size = clamp(v[0], SCULPT_SIZE_MIN, SCULPT_SIZE_MAX)
+	if len(v) > 1 do sculpt_strength = clamp(v[1], 5, 100)
+	if len(v) > 2 do sculpt_pressure = v[2] != 0
+}
 // Scrubbing over a shape stretches and folds its outline like kneading, so its length grows very fast. After a stroke
 // has added this many segments, across all the objects it reached, the brush only moves what is there.
 SCULPT_MAX_ADDED :: 20000

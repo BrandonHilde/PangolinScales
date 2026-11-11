@@ -28,6 +28,7 @@ prefs_save :: proc() {
 	fmt.sbprintf(&sb, "navigator=%d\n", show_navigator ? 1 : 0)
 	fmt.sbprintf(&sb, "eraser_size=%d\neraser_pressure=%d\n", eraser_size, eraser_pressure ? 1 : 0)
 	fmt.sbprintf(&sb, "sculpt_size=%d\nsculpt_strength=%d\nsculpt_pressure=%d\n", sculpt_size, sculpt_strength, sculpt_pressure ? 1 : 0)
+	fmt.sbprintf(&sb, "eraser_preset=%s\nsculpt_preset=%s\n", name_str(&eraser_preset), name_str(&sculpt_preset))
 	files_prefs_write(&sb)
 	write_file(prefs_path(), transmute([]u8)strings.to_string(sb))
 }
@@ -51,6 +52,10 @@ prefs_parse :: proc(contents: string) {
 			continue
 		}
 		if files_prefs_read(key, sval) do continue
+		if key == "eraser_preset" || key == "sculpt_preset" {
+			name_set(key == "eraser_preset" ? &eraser_preset : &sculpt_preset, sval)
+			continue
+		}
 		val, vok := strconv.parse_int(sval)
 		if !vok do continue
 		switch key {

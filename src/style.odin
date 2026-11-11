@@ -1,5 +1,7 @@
 package pangolin
 
+import "core:math"
+
 // ---------------------------------------------------------------------------
 // Style editing: changes go to the selected objects and also become the style new objects start with.
 // ---------------------------------------------------------------------------
@@ -65,6 +67,57 @@ style_set_join :: proc(d: ^Doc, j: Join) {
 	style_push(d)
 	for n in sel_nodes(d) do n.join = j
 	doc_changed(d)
+}
+
+// Line patterns, sized from the stroke width: 0 solid, 1 dashed, 2 dotted, 3 dash-dot.
+LINE_PATTERNS := [?]string{"Solid line", "Dashed", "Dotted", "Dash-dot"}
+
+// Which of LINE_PATTERNS a dash list looks like.
+line_pattern_of :: proc(dash: [4]f32, ndash: int) -> int {
+	if ndash == 2 && dash[1] > dash[0] * 3 do return 2
+	if ndash == 2 do return 1
+	if ndash == 4 do return 3
+	return 0
+}
+
+@(private = "file")
+set_line_pattern :: proc(pattern: int, sw: f32, dash: ^[4]f32, ndash: ^int, cap: ^Cap) {
+	w := max(sw, 1)
+	switch pattern {
+	case 0: ndash^ = 0
+	case 1: ndash^, dash^ = 2, {w * 4, w * 2, 0, 0}
+	case 2: ndash^, dash^ = 2, {0.01, w * 2, 0, 0}
+	case 3: ndash^, dash^ = 4, {w * 4, w * 2, 0.01, w * 2}
+	}
+	// a dot is a very short dash, which only a round cap shows
+	if pattern == 2 do cap^ = .Round
+}
+
+style_set_line_pattern :: proc(d: ^Doc, pattern: int) {
+	set_line_pattern(pattern, cur_sw, &cur_dash, &cur_ndash, &cur_cap)
+	if len(d.sel) == 0 do return
+	style_push(d)
+	for n in sel_nodes(d) do set_line_pattern(pattern, n.sw, &n.dash, &n.ndash, &n.cap)
+	doc_changed(d)
+}
+
+// Sets the whole stroke style (not its color), like the stroke controls do one setting.
+style_set_stroke_style :: proc(d: ^Doc, st: Stroke_Style) {
+	cur_sw, cur_cap, cur_join, cur_miter = st.width, st.cap, st.join, st.miter
+	cur_dash, cur_ndash, cur_dash_off = st.dash, st.ndash, st.offset
+	if len(d.sel) == 0 do return
+	style_push(d)
+	for n in sel_nodes(d) {
+		n.sw, n.cap, n.join, n.miter = st.width, st.cap, st.join, st.miter
+		n.dash, n.ndash, n.dash_off = st.dash, st.ndash, st.offset
+	}
+	doc_changed(d)
+}
+
+// The stroke style the properties panel shows: the first selected object's, or the one new shapes get.
+stroke_style_current :: proc(d: ^Doc) -> Stroke_Style {
+	if sel := first_selected(d); sel != nil do return stroke_style_of(sel)
+	return {width = cur_sw, cap = cur_cap, join = cur_join, miter = cur_miter, dash = cur_dash, ndash = cur_ndash, offset = cur_dash_off}
 }
 
 style_set_opacity :: proc(d: ^Doc, o: f32) {
@@ -195,3 +248,42 @@ paint_make_gradient :: proc(base: Paint, bounds: Bounds, radial: bool) -> Paint 
 	}
 	return g
 }
+
+// Stroke presets --------------------------------------------------------------------------------------------
+
+stroke_preset: Name // the stroke preset picked last (presets.odin)
+
+// A stroke style as the shared presets take it: lengths in hundredths, the cap and join as numbers.
+stroke_to_ints :: proc(st: Stroke_Style) -> [10]int {
+	h :: proc(v: f32) -> int {return int(math.round(v * 100))}
+	s := st
+	// a solid line keeps the dashes it had before, unused; they mustn't make it differ from a preset
+	if s.ndash == 0 do s.dash, s.offset = {}, 0
+	return {h(s.width), int(s.cap), int(s.join), h(s.miter), h(s.dash[0]), h(s.dash[1]), h(s.dash[2]), h(s.dash[3]), s.ndash, h(s.offset)}
+}
+
+// The style from a preset's values. One saved with fewer values keeps the rest from `base`.
+stroke_from_ints :: proc(base: Stroke_Style, v: []int) -> Stroke_Style {
+	f :: proc(v: []int, i: int, old: f32) -> f32 {return i < len(v) ? f32(v[i]) / 100 : old}
+	st := base
+	st.width = max(f(v, 0, st.width), 0)
+	if len(v) > 1 do st.cap = Cap(clamp(v[1], 0, len(Cap) - 1))
+	if len(v) > 2 do st.join = Join(clamp(v[2], 0, len(Join) - 1))
+	st.miter = max(f(v, 3, st.miter), 1)
+	for i in 0 ..< 4 do st.dash[i] = max(f(v, 4 + i, st.dash[i]), 0)
+	if len(v) > 8 do st.ndash = clamp(v[8], 0, 4)
+	st.offset = f(v, 9, st.offset)
+	return st
+}
+
+// width, cap (0 butt, 1 round, 2 square), join (0 miter, 1 round, 2 bevel), miter limit, dash ×4, dash count, dash offset
+stroke_builtins := [?]Preset_Builtin {
+	{name = "Hairline 1", vals = {100, 0, 0, 400, 0, 0, 0, 0, 0, 0}},
+	{name = "Medium 2 round", vals = {200, 1, 1, 400, 0, 0, 0, 0, 0, 0}},
+	{name = "Bold 4 round", vals = {400, 1, 1, 400, 0, 0, 0, 0, 0, 0}},
+	{name = "Square caps 2", vals = {200, 2, 0, 400, 0, 0, 0, 0, 0, 0}},
+	{name = "Dashed 2", vals = {200, 0, 0, 400, 800, 400, 0, 0, 2, 0}},
+	{name = "Dotted 3", vals = {300, 1, 1, 400, 1, 600, 0, 0, 2, 0}},
+}
+
+STROKE_PRESET_TIP :: Tip{"Stroke preset", "A ready-made or saved stroke: its width, line ends, corners and pattern, not its color. Picking one sets them on the selected objects, and for new shapes. The ... menu saves your own."}

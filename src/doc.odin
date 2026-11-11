@@ -464,6 +464,7 @@ new_shape :: proc(d: ^Doc, kind: Node_Kind) -> ^Node {
 	n.stroke = cur_stroke
 	n.sw = cur_sw
 	n.cap, n.join = cur_cap, cur_join
+	n.miter, n.dash, n.ndash, n.dash_off = cur_miter, cur_dash, cur_ndash, cur_dash_off
 	label := [Node_Kind]string {
 		.Group   = "Group",
 		.Path    = "Path",
@@ -481,5 +482,9 @@ cur_stroke: Paint = {kind = .Solid, color = {40, 30, 24, 255}}
 cur_sw: f32 = 2
 cur_cap: Cap = .Butt
 cur_join: Join = .Miter
+cur_miter: f32 = 4
+cur_dash: [4]f32
+cur_ndash: int
+cur_dash_off: f32
 
 _ :: math

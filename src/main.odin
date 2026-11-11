@@ -107,6 +107,9 @@ main :: proc() {
 	defer gfx_shutdown()
 	pen_init()
 	tool_groups_default()
+	// the built-in presets the starting settings match, until the prefs say otherwise
+	name_set(&eraser_preset, "Normal")
+	name_set(&sculpt_preset, "Normal")
 	prefs_load()
 	brand_init()
 	oui_init()

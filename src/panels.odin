@@ -548,6 +548,15 @@ panel_properties :: proc(r: Rect) {
 	tip_text(x, y + 2, "Stroke", C_TEXT_DIM, {"Stroke settings", "How the outline is drawn. To change its color, pick Stroke at the top of this panel."})
 	hline(x + 44, y + 7, w - 44, C_BORDER)
 	y += 16
+	{
+		st := stroke_style_current(d)
+		sv := stroke_to_ints(st)
+		tip_text(x, y + 3, "Preset", C_TEXT_DIM, STROKE_PRESET_TIP)
+		if v, ok := preset_row(Rect{x + 44, y, w - 44, 14}, "stroke", stroke_builtins[:], &stroke_preset, sv[:], tip = STROKE_PRESET_TIP); ok {
+			style_set_stroke_style(d, stroke_from_ints(st, v.vals))
+		}
+		y += 18
+	}
 	wv := int(cur_sw * 10)
 	if sel != nil do wv = int(sel.sw * 10)
 	if slider(Rect{x, y, w, 14}, &wv, 0, 1000, "Width", {"Stroke width", "Thickness of the outline in document units. Drag, or use the mouse wheel. 0 draws no outline."}, "", 1, 10) do style_set_width(d, f32(wv) / 10)
@@ -560,29 +569,14 @@ panel_properties :: proc(r: Rect) {
 	if nv, ch := combo(Rect{x, y, hw, 14}, caps[:], cv, {"Line ends", "How the ends of an open path look. Butt: cut off at the end point. Round: a half circle past the end. Square: a square past the end."}); ch do style_set_cap(d, Cap(nv))
 	if nv, ch := combo(Rect{x + hw + 4, y, hw, 14}, joins[:], jv, {"Corners", "How the outline turns at corners. Miter: a sharp point. Round: rounded off. Bevel: the point is cut flat."}); ch do style_set_join(d, Join(nv))
 	y += 18
+	dv := sel != nil ? line_pattern_of(sel.dash, sel.ndash) : line_pattern_of(cur_dash, cur_ndash)
+	if nv, ch := combo(Rect{x, y, hw, 14}, LINE_PATTERNS[:], dv, {"Line pattern", "A solid line, dashes, dots, or alternating dashes and dots. The pattern is sized from the stroke width."}); ch do style_set_line_pattern(d, nv)
 	if sel != nil {
-		dashes := [?]string{"Solid line", "Dashed", "Dotted", "Dash-dot"}
-		dv := 0
-		if sel.ndash == 2 && sel.dash[1] > sel.dash[0] * 3 do dv = 2
-		else if sel.ndash == 2 do dv = 1
-		else if sel.ndash == 4 do dv = 3
-		if nv, ch := combo(Rect{x, y, hw, 14}, dashes[:], dv, {"Line pattern", "A solid line, dashes, dots, or alternating dashes and dots. The pattern is sized from the stroke width."}); ch {
-			style_push(d)
-			for n in sel_nodes(d) {
-				sw := max(n.sw, 1)
-				switch nv {
-				case 0: n.ndash = 0
-				case 1: n.ndash, n.dash = 2, {sw * 4, sw * 2, 0, 0}
-				case 2: n.ndash, n.dash = 2, {0.01, sw * 2, 0, 0}
-				case 3: n.ndash, n.dash = 4, {sw * 4, sw * 2, 0.01, sw * 2}
-				}
-				if nv == 2 do n.cap = .Round
-			}
-			doc_changed(d)
-		}
 		ov := int(sel.opacity * 100 + 0.5)
 		if slider(Rect{x + hw + 4, y, hw, 14}, &ov, 0, 100, "Opacity", {"Opacity", "How solid the whole object is, fill and stroke together: 100% is solid, 0% invisible. Drag, or use the mouse wheel."}, "%") do style_set_opacity(d, f32(ov) / 100)
-		y += 18
+	}
+	y += 18
+	if sel != nil {
 		check_even := sel.even_odd
 		if checkbox(x, y, "Even-odd fill", &check_even, {"Even-odd fill", "How overlapping parts of a path fill. On: areas overlapped an even number of times become holes. Off: the drawing direction decides, so overlaps usually stay filled."}) {
 			style_push(d)
