@@ -315,6 +315,7 @@ font_delete_glyph :: proc(d: ^Doc) {
 	idx := f.cur
 	glyph_free(&f.glyphs[idx])
 	ordered_remove(&f.glyphs, idx)
+	for _, &t in f.thumbs do tex_destroy(&t.tex)
 	clear(&f.thumbs)
 	for &k in f.kerning {
 		if k.left > idx do k.left -= 1

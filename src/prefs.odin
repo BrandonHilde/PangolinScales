@@ -11,15 +11,6 @@ prefs_path :: proc() -> string {
 	return fmt.tprintf("%sscales.cfg", gfx_app_dir())
 }
 
-read_file :: proc(path: string) -> (data: []u8, ok: bool) {
-	d, err := os.read_entire_file(path, context.allocator)
-	return d, err == nil
-}
-
-write_file :: proc(path: string, data: []u8) -> bool {
-	return os.write_entire_file(path, data) == nil
-}
-
 prefs_save :: proc() {
 	sb := strings.builder_make(context.temp_allocator)
 	fmt.sbprintf(&sb, "ui_scale=%d\n", ui_scale_pref)

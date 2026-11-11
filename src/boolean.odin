@@ -250,6 +250,7 @@ intersect_edges :: proc(e, f: ^Bedge, se, sf: ^[dynamic]Split) {
 split_edges :: proc(edges: []Bedge) -> (pieces: [dynamic]Bedge, did_split: bool) {
 	n := len(edges)
 	splits := make([][dynamic]Split, n, context.temp_allocator)
+	for &s in splits do s = make([dynamic]Split, context.temp_allocator) // (left as zero values they would go on the heap)
 	order := make([]int, n, context.temp_allocator)
 	for i in 0 ..< n do order[i] = i
 	min_x := make([]i64, n, context.temp_allocator)
@@ -337,6 +338,7 @@ classify :: proc(recs: []Brec, op: Bool_Op, a_even_odd: bool) -> (out: [dynamic]
 		return clamp(int(math.floor(f64(v - min_y) / size)), 0, bands - 1)
 	}
 	buckets := make([][dynamic]int, bands, context.temp_allocator)
+	for &b in buckets do b = make([dynamic]int, context.temp_allocator)
 	for r, i in recs {
 		for b in band_of(min(r.ay, r.by), min_y, size, bands) ..= band_of(max(r.ay, r.by), min_y, size, bands) {
 			append(&buckets[b], i)
@@ -350,6 +352,7 @@ classify :: proc(recs: []Brec, op: Bool_Op, a_even_odd: bool) -> (out: [dynamic]
 	}
 	xsize := max(f64(max_x - min_x) / f64(bands), 1)
 	xbuckets := make([][dynamic]int, bands, context.temp_allocator)
+	for &b in xbuckets do b = make([dynamic]int, context.temp_allocator)
 	for r, i in recs {
 		for b in band_of(min(r.ax, r.bx), min_x, xsize, bands) ..= band_of(max(r.ax, r.bx), min_x, xsize, bands) {
 			append(&xbuckets[b], i)
@@ -412,7 +415,8 @@ link_loops :: proc(edges: []Bout) -> [dynamic][dynamic]int {
 	outgoing := make(map[[2]i64][dynamic]int, len(edges), context.temp_allocator)
 	for e, i in edges {
 		k := [2]i64{e.ax, e.ay}
-		l := outgoing[k]
+		l, had := outgoing[k]
+		if !had do l = make([dynamic]int, context.temp_allocator)
 		append(&l, i)
 		outgoing[k] = l
 	}

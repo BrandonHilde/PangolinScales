@@ -255,7 +255,7 @@ cmd_combine :: proc(d: ^Doc) {
 
 cmd_break_apart :: proc(d: ^Doc) {
 	nodes := sel_nodes(d)
-	if len(nodes) == 0 do return
+	if !any_shape(nodes) do return
 	history_push(d)
 	clear(&d.sel)
 	for n in nodes {
@@ -371,7 +371,7 @@ cmd_offset :: proc(d: ^Doc, dir: f32) {
 
 cmd_stroke_to_path :: proc(d: ^Doc) {
 	nodes := sel_nodes(d)
-	if len(nodes) == 0 do return
+	if !any_shape(nodes) do return
 	history_push(d)
 	clear(&d.sel)
 	for n in nodes {
@@ -425,7 +425,7 @@ cmd_stroke_to_path :: proc(d: ^Doc) {
 
 cmd_simplify :: proc(d: ^Doc) {
 	nodes := sel_nodes(d)
-	if len(nodes) == 0 do return
+	if !any_shape(nodes) do return
 	history_push(d)
 	tol := max(1.5 / d.zoom, 0.25)
 	for n in nodes {

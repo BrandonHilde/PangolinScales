@@ -158,14 +158,24 @@ dialogs_run :: proc() {
 		c := dialog_frame("Unsaved changes", 320, 90)
 		text(c.x, c.y + 4, fmt.tprintf("Save changes to %s?", name_str(&doc.title)), C_TEXT)
 		y := c.y + c.h - 18
-		if button_primary(Rect{c.x + c.w - 64, y, 64, 18}, "Save", {"Save", "Save your changes, then close the document."}) {
+		quitting := dialog.flag // asked on the way out: the answer goes on to the next unsaved document, then quits
+		if button_primary(Rect{c.x + c.w - 64, y, 64, 18}, "Save", {"Save", quitting ? "Save your changes, then go on quitting." : "Save your changes, then close the document."}) {
 			dialog_close()
 			doc_save(doc, false)
-			if !doc.modified do doc_close_now(doc)
+			// (a save that failed or was cancelled leaves the document open, and has said why)
+			if !doc.modified {
+				if quitting do request_quit()
+				else do doc_close_now(doc)
+			}
 		}
-		if button(Rect{c.x + c.w - 150, y, 80, 18}, "Don't save", {"Don't save", "Close the document and lose the changes since you last saved. This can't be undone."}) {
+		if button(Rect{c.x + c.w - 150, y, 80, 18}, "Don't save", {"Don't save", quitting ? "Quit and lose this document's changes since you last saved. This can't be undone." : "Close the document and lose the changes since you last saved. This can't be undone."}) {
 			dialog_close()
-			doc_close_now(doc)
+			if quitting {
+				doc.modified = false
+				request_quit()
+			} else {
+				doc_close_now(doc)
+			}
 		}
 		if button(Rect{c.x + c.w - 220, y, 64, 18}, "Cancel", {"Cancel", "Keep the document open and go back to it (Esc)."}) || (IsKeyPressed(.ESCAPE) && ui.focus_id == 0) {
 			dialog_close()

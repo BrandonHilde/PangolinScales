@@ -82,8 +82,17 @@ decode_entities :: proc(s: string) -> string {
 	return strings.to_string(sb)
 }
 
+// A node in the temp allocator, lists and all: left as their zero value the lists would go on the heap and stay there.
+@(private = "file")
+xnode_new :: proc() -> ^XNode {
+	n := new(XNode, context.temp_allocator)
+	n.attrs = make([dynamic]XAttr, context.temp_allocator)
+	n.kids = make([dynamic]^XNode, context.temp_allocator)
+	return n
+}
+
 xml_parse :: proc(src: string) -> ^XNode {
-	root := new(XNode, context.temp_allocator)
+	root := xnode_new()
 	cur := root
 	i := 0
 	n := len(src)
@@ -95,7 +104,7 @@ xml_parse :: proc(src: string) -> ^XNode {
 			end := j < 0 ? n : i + j
 			txt := src[i:end]
 			if len(strings.trim_space(txt)) > 0 || cur.tag == "text" || cur.tag == "tspan" || cur.tag == "style" {
-				t := new(XNode, context.temp_allocator)
+				t := xnode_new()
 				t.is_text = true
 				t.text = decode_entities(txt)
 				t.parent = cur
@@ -112,7 +121,7 @@ xml_parse :: proc(src: string) -> ^XNode {
 		case strings.has_prefix(rest, "<![CDATA["):
 			e := strings.index(rest, "]]>")
 			end := e < 0 ? n : i + e
-			t := new(XNode, context.temp_allocator)
+			t := xnode_new()
 			t.is_text = true
 			t.text = src[i + 9:end]
 			t.parent = cur
@@ -140,7 +149,7 @@ xml_parse :: proc(src: string) -> ^XNode {
 			// start tag
 			k := i + 1
 			for k < n && !is_space(src[k]) && src[k] != '>' && src[k] != '/' do k += 1
-			el := new(XNode, context.temp_allocator)
+			el := xnode_new()
 			el.tag = local_name(src[i + 1:k])
 			el.parent = cur
 			append(&cur.kids, el)

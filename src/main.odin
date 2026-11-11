@@ -156,7 +156,7 @@ main :: proc() {
 		if hover.frame > 0 && frame_no >= hover.frame do gfx.mouse = hover.pos
 		if gfx.quit {
 			gfx.quit = false
-			want_quit = true
+			request_quit()
 		}
 
 		sw, sh := int(gfx.pw), int(gfx.ph)

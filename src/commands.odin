@@ -201,7 +201,7 @@ run_cmd :: proc(c: Cmd) {
 	case .Close_Doc:
 		doc_close(d)
 	case .Quit:
-		want_quit = true
+		request_quit()
 	case .Undo:
 		tools_cancel()
 		history_undo(d)
@@ -450,6 +450,26 @@ doc_save :: proc(d: ^Doc, as: bool) {
 	}
 }
 
+// Quits, once no document has changes that aren't saved: one that has comes to the front with the question about it
+// (`dialog.flag`: the question is part of quitting), and its answer comes back here for the next one.
+request_quit :: proc() {
+	for d in docs {
+		if !d.modified do continue
+		if dialog.kind != .None do return // something is being asked or set already: it is finished first
+		if d != doc {
+			tools_cancel()
+			stop_playback()
+			play_tag = -1
+			doc = d
+			render_invalidate()
+		}
+		dialog_open(.Confirm_Close)
+		dialog.flag = true
+		return
+	}
+	want_quit = true
+}
+
 doc_close :: proc(d: ^Doc) {
 	if d.modified {
 		dialog_open(.Confirm_Close)
@@ -656,10 +676,17 @@ cmd_order :: proc(d: ^Doc, delta: int) {
 	nodes := sel_nodes(d)
 	if len(nodes) == 0 do return
 	history_push(d)
-	for n in nodes {
+	// the one furthest the way they are going moves first, and none passes another of the selection: two neighbours
+	// raised together both go up (not one over the other and back), and several sent to the back keep their order
+	held := make(map[^Node]bool, len(nodes), context.temp_allocator)
+	for k in 0 ..< len(nodes) {
+		n := delta > 0 ? nodes[len(nodes) - 1 - k] : nodes[k]
+		held[n] = true
 		p := node_parent(d.root, n)
 		i := node_index(p, n)
-		ni := clamp(i + delta, 0, len(p.children) - 1)
+		step := delta > 0 ? 1 : -1
+		ni := i
+		for ni != clamp(i + delta, 0, len(p.children) - 1) && !held[p.children[ni + step]] do ni += step
 		if ni == i do continue
 		ordered_remove(&p.children, i)
 		inject_at_node(&p.children, ni, n)
@@ -774,8 +801,16 @@ cmd_fit_page :: proc(d: ^Doc) {
 	doc_changed(d)
 }
 
+// Whether any of `nodes` is a shape (not a group): the commands that only change shapes check it before they add an
+// undo step, so a selection with nothing for them to do doesn't mark the document as changed.
+any_shape :: proc(nodes: []^Node) -> bool {
+	for n in nodes do if n.kind != .Group do return true
+	return false
+}
+
 cmd_reverse :: proc(d: ^Doc) {
 	nodes := sel_nodes(d)
+	if !any_shape(nodes) do return
 	history_push(d)
 	for n in nodes {
 		if n.kind == .Group do continue

@@ -169,6 +169,58 @@ selftest :: proc() -> int {
 	</svg>`
 	sd, sok := svg_parse(svg)
 	check(&t, sok, "svg feature parse")
+	{
+		c1, ok1 := parse_color("DarkSlateGray", {})
+		c2, ok2 := parse_color("rebeccapurple", {})
+		check(&t, ok1 && c1 == Color{47, 79, 79, 255} && ok2 && c2 == Color{102, 51, 153, 255}, "every CSS color name is known")
+		// Raise / Lower / To Front / To Back with several shapes selected
+		od := doc_new(.Svg, "order", 100, 100)
+		mk :: proc(d: ^Doc, x: f32) -> ^Node {
+			n := new_shape(d, .Rect)
+			n.x, n.y, n.w, n.h = x, 10, 40, 40
+			append(&d.root.children, n)
+			doc_changed(d)
+			return n
+		}
+		a, b, c, e := mk(od, 0), mk(od, 10), mk(od, 20), mk(od, 30)
+		kids := &od.root.children
+		is :: proc(kids: ^[dynamic]^Node, want: ..^Node) -> bool {
+			if len(kids) != len(want) do return false
+			for n, i in want do if kids[i] != n do return false
+			return true
+		}
+		check(&t, is(kids, a, b, c, e), "shapes stack in the order they were added")
+		sel_set(od, a)
+		sel_toggle(od, b)
+		cmd_order(od, 1)
+		check(&t, is(kids, c, a, b, e), "Raise moves two selected neighbours up together")
+		cmd_order(od, -1)
+		check(&t, is(kids, a, b, c, e), "Lower moves them back down together")
+		sel_set(od, b)
+		sel_toggle(od, e)
+		cmd_order(od, -1000000)
+		check(&t, is(kids, b, e, a, c), "To Back keeps the order of the selected shapes")
+		cmd_order(od, 1000000)
+		check(&t, is(kids, a, c, b, e), "To Front keeps it too")
+		steps := len(od.undo)
+		sel_set(od, nil)
+		cmd_reverse(od)
+		check(&t, len(od.undo) == steps, "Reverse with nothing selected adds no undo step")
+		doc_free(od)
+		// a font whose table starts past the end of the file
+		bad := make([]u8, 28, context.temp_allocator)
+		bad[5] = 1
+		copy(bad[12:], "name")
+		bad[22], bad[23] = 0xff, 0xff
+		check(&t, ttf_name(bad, 1) == "", "a font table past the end of the file is left alone")
+		copy(bad[12:], "cmap")
+		check(&t, len(ttf_cmap(bad, 4)) == 4, "and so is its character map")
+		p1 := path_default_ext(strings.clone("/nowhere/drawing"), "svg")
+		p2 := path_default_ext(strings.clone("/nowhere/drawing.png"), "svg")
+		check(&t, p1 == "/nowhere/drawing.svg" && p2 == "/nowhere/drawing.png", "a saved name without an extension gets one")
+		delete(p1)
+		delete(p2)
+	}
 	if sok {
 		g := sd.root.children[0]
 		check(&t, g.kind == .Group && len(g.children) == 2, "svg group")

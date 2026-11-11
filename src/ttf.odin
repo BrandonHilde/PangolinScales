@@ -19,6 +19,11 @@ BW :: struct {
 	b: [dynamic]u8,
 }
 
+// Its bytes are in the temp allocator: a writer left as its zero value would put them on the heap, where nothing frees them.
+bw_make :: proc() -> BW {
+	return BW{b = make([dynamic]u8, context.temp_allocator)}
+}
+
 bw_u8 :: proc(w: ^BW, v: u8) {
 	append(&w.b, v)
 }
@@ -230,7 +235,7 @@ contours_box :: proc(cs: [][dynamic]TT_Pt) -> Glyph_Box {
 }
 
 write_simple_glyph :: proc(contours: [][dynamic]TT_Pt, box: Glyph_Box) -> []u8 {
-	w: BW
+	w := bw_make()
 	bw_i16(&w, i16(len(contours)))
 	bw_i16(&w, i16(clamp(box.x0, -32768, 32767)))
 	bw_i16(&w, i16(clamp(box.y0, -32768, 32767)))
@@ -308,7 +313,7 @@ utf16be :: proc(s: string) -> []u8 {
 ttf_write :: proc(f: ^Font_Doc) -> (data: []u8, err: string) {
 	n := len(f.glyphs)
 	if n == 0 do return nil, "The font has no glyphs."
-	glyf: BW
+	glyf := bw_make()
 	loca := make([dynamic]u32, context.temp_allocator)
 	max_pts, max_contours: int
 	bbox := Glyph_Box{max(i32), max(i32), min(i32), min(i32), true}
@@ -357,7 +362,7 @@ ttf_write :: proc(f: ^Font_Doc) -> (data: []u8, err: string) {
 
 	// loca
 	{
-		w: BW
+		w := bw_make()
 		for o in loca {
 			if long_loca do bw_u32(&w, o)
 			else do bw_u16(&w, u16(o / 2))
@@ -366,7 +371,7 @@ ttf_write :: proc(f: ^Font_Doc) -> (data: []u8, err: string) {
 	}
 	// head
 	{
-		w: BW
+		w := bw_make()
 		bw_fixed(&w, 1)
 		bw_fixed(&w, 1)
 		bw_u32(&w, 0)
@@ -391,7 +396,7 @@ ttf_write :: proc(f: ^Font_Doc) -> (data: []u8, err: string) {
 	}
 	// hhea
 	{
-		w: BW
+		w := bw_make()
 		bw_fixed(&w, 1)
 		bw_i16(&w, i16(f.asc))
 		bw_i16(&w, i16(f.desc))
@@ -409,7 +414,7 @@ ttf_write :: proc(f: ^Font_Doc) -> (data: []u8, err: string) {
 	}
 	// maxp
 	{
-		w: BW
+		w := bw_make()
 		bw_fixed(&w, 1)
 		bw_u16(&w, u16(n))
 		bw_u16(&w, u16(max_pts))
@@ -422,7 +427,7 @@ ttf_write :: proc(f: ^Font_Doc) -> (data: []u8, err: string) {
 	}
 	// hmtx
 	{
-		w: BW
+		w := bw_make()
 		for g, i in f.glyphs {
 			bw_u16(&w, u16(clamp(int(math.round(g.advance)), 0, 65535)))
 			bw_i16(&w, i16(lsbs[i]))
@@ -439,7 +444,7 @@ ttf_write :: proc(f: ^Font_Doc) -> (data: []u8, err: string) {
 	slice.sort_by(mapping[:], proc(a, b: [2]int) -> bool { return a[0] < b[0] })
 	// OS/2
 	{
-		w: BW
+		w := bw_make()
 		first, last := 0xffff, 0
 		total, count := 0, 0
 		for m in mapping {
@@ -508,12 +513,12 @@ ttf_write :: proc(f: ^Font_Doc) -> (data: []u8, err: string) {
 			{5, "Version 1.0"},
 			{6, strings.to_string(ps)},
 		}
-		w: BW
+		w := bw_make()
 		bw_u16(&w, 0)
 		bw_u16(&w, u16(len(ids)))
 		bw_u16(&w, u16(6 + len(ids) * 12))
 		off := 0
-		strs: BW
+		strs := bw_make()
 		for e in ids {
 			enc := utf16be(e.text)
 			bw_u16(&w, 3)
@@ -530,7 +535,7 @@ ttf_write :: proc(f: ^Font_Doc) -> (data: []u8, err: string) {
 	}
 	// post
 	{
-		w: BW
+		w := bw_make()
 		bw_fixed(&w, 3)
 		bw_fixed(&w, 0)
 		bw_i16(&w, -100)
@@ -560,7 +565,7 @@ ttf_write :: proc(f: ^Font_Doc) -> (data: []u8, err: string) {
 			entry_sel := 0
 			for (1 << uint(entry_sel + 1)) <= sc do entry_sel += 1
 			search := 2 * (1 << uint(entry_sel))
-			w: BW
+			w := bw_make()
 			bw_u16(&w, 4)
 			bw_u16(&w, u16(16 + sc * 8))
 			bw_u16(&w, 0)
@@ -588,7 +593,7 @@ ttf_write :: proc(f: ^Font_Doc) -> (data: []u8, err: string) {
 				append(&groups, Group{mapping[i][0], mapping[e][0], mapping[i][1]})
 				i = e + 1
 			}
-			w: BW
+			w := bw_make()
 			bw_u16(&w, 12)
 			bw_u16(&w, 0)
 			bw_u32(&w, u32(16 + len(groups) * 12))
@@ -607,7 +612,7 @@ ttf_write :: proc(f: ^Font_Doc) -> (data: []u8, err: string) {
 		off12 := off4 + len(fmt4)
 		pad := off12 % 2
 		off12 += pad
-		w: BW
+		w := bw_make()
 		bw_u16(&w, 0)
 		bw_u16(&w, u16(len(records)))
 		for r in records {
@@ -641,7 +646,7 @@ ttf_write :: proc(f: ^Font_Doc) -> (data: []u8, err: string) {
 				search *= 2
 				sel += 1
 			}
-			w: BW
+			w := bw_make()
 			bw_u16(&w, 0)
 			bw_u16(&w, 1)
 			bw_u16(&w, 0)
@@ -731,7 +736,12 @@ ttf_table :: proc(b: []u8, tag: string) -> (off, length: int, ok: bool) {
 	for i in 0 ..< n {
 		e := base + 12 + i * 16
 		if e + 16 > len(b) do break
-		if string(b[e:e + 4]) == tag do return be32(b, e + 8), be32(b, e + 12), true
+		if string(b[e:e + 4]) == tag {
+			// a table that starts past the end of the file (a cut-off or damaged font) isn't there
+			o := be32(b, e + 8)
+			if o >= len(b) do return 0, 0, false
+			return o, be32(b, e + 12), true
+		}
 	}
 	return 0, 0, false
 }
@@ -766,6 +776,7 @@ ttf_name :: proc(b: []u8, id: int) -> string {
 // glyph index -> codepoints from the best Unicode cmap subtable.
 ttf_cmap :: proc(b: []u8, num_glyphs: int) -> [][dynamic]rune {
 	res := make([][dynamic]rune, num_glyphs, context.temp_allocator)
+	for &r in res do r = make([dynamic]rune, context.temp_allocator)
 	off, length, ok := ttf_table(b, "cmap")
 	if !ok do return res
 	t := b[off:min(off + length, len(b))]
@@ -783,14 +794,14 @@ ttf_cmap :: proc(b: []u8, num_glyphs: int) -> [][dynamic]rune {
 			best_score, best_off = score, so
 		}
 	}
-	if best_off < 0 do return res
+	if best_off < 0 || best_off >= len(t) do return res
 	st := t[best_off:]
 	add :: proc(res: [][dynamic]rune, g: int, cp: int) {
 		if g > 0 && g < len(res) do append(&res[g], rune(cp))
 	}
 	switch be16(st, 0) {
 	case 4:
-		sc := be16(st, 6) / 2
+		sc := min(be16(st, 6) / 2, max(len(st) - 16, 0) / 8) // no more segments than the table has room for
 		for s in 0 ..< sc {
 			end := be16(st, 14 + s * 2)
 			start := be16(st, 16 + sc * 2 + s * 2)
@@ -811,7 +822,7 @@ ttf_cmap :: proc(b: []u8, num_glyphs: int) -> [][dynamic]rune {
 			}
 		}
 	case 12:
-		ng := be32(st, 12)
+		ng := min(be32(st, 12), max(len(st) - 16, 0) / 12)
 		for i in 0 ..< ng {
 			p := 16 + i * 12
 			sc, ec, sg := be32(st, p), be32(st, p + 4), be32(st, p + 8)

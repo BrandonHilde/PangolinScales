@@ -20,7 +20,7 @@ Drag `.svg`, `.ttf` or `.otf` files onto the window to open them.
 `PangolinScales --selftest` runs the headless test suite (on Windows use `PangolinScales-console.exe`, since the GUI build has no console).
 
 ## Tool groups
-The left toolbar holds **tool groups**, as in Pangolin Paints. Each group has a hotkey shown as a keycap (1 to 5 by
+The left toolbar holds **tool groups**, as in Pangolin Paints. Each group has a hotkey shown as a keycap (1 to 6 by
 default): pressing it picks the tool last used from that group, pressing it again cycles through the group's tools.
 - Click a group's keycap to assign a hotkey (any letter or digit; Esc cancels, Backspace clears), rename or remove the group.
   A hotkey on a letter takes over that letter's single-key tool shortcut. Right-click the header for rename / remove.
