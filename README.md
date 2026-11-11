@@ -11,6 +11,9 @@ the code the Pangolin tools share ([PangolinShared](https://github.com/BrandonHi
 (`git submodule update --init`). Odin compiles one folder as one package, so the build scripts first copy the shared code into
 `src` as `shared_*.odin` (ignored by git: edit it in `libs/shared`). To build by hand, run that step yourself:
 `sh libs/shared/sync.sh` (or `libs\shared\sync.bat`), then `odin build src -out:PangolinScales -o:speed -collection:odinui=libs/odinui`.
+To update to the newest version, run `update.bat` (Windows) or `./update.sh`: it pulls the latest commits and moves the
+submodules to the versions they expect (a plain `git pull` leaves the submodules where they were, and the build then
+fails). `build.bat` / `./build.sh` on their own build whatever is there now.
 On Linux, `./install.sh` builds the program and installs it for your account: in `~/.local/opt/pangolin/PangolinScales`, with
 its own settings, workspaces and macros (apart from this folder's build), and in the application list with its icon.
 Run it again to update, or `./install.sh --uninstall` to remove it. To install a build made elsewhere (for another

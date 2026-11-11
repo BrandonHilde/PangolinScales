@@ -8,6 +8,10 @@ cd "$(dirname "$0")"
 if [ ! -d libs/odinui/odinui ] || [ ! -d libs/shared/src ]; then
 	git submodule update --init --recursive
 fi
+# A pull doesn't move the submodules: say so when libs/shared isn't the version this app's code expects
+case "$(git submodule status libs/shared 2>/dev/null)" in
++*) echo "Note: libs/shared is not the version this app's code expects, so the build may fail. Run ./update.sh to bring both up to date, or 'git submodule update' to match this code." >&2 ;;
+esac
 # Odin compiles one folder as one package, so the shared code is copied in
 sh libs/shared/sync.sh
 # SDL3 is linked from the system (its development package) instead of a DLL next to the executable

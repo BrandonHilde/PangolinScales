@@ -10,6 +10,13 @@ if defined fetch (
 	git submodule update --init --recursive
 	if errorlevel 1 exit /b 1
 )
+rem A pull doesn't move the submodules: say so when libs/shared isn't the version this app's code expects
+set "sub="
+for /f "delims=" %%s in ('git submodule status libs/shared 2^>nul') do set "sub=%%s"
+if "%sub:~0,1%"=="+" (
+	echo Note: libs\shared is not the version this app's code expects, so the build may fail.
+	echo Run update.bat to bring both up to date, or "git submodule update" to match this code.
+)
 rem Odin compiles one folder as one package, so the shared code is copied in
 call libs\shared\sync.bat
 rem The icon is already compiled (assets\icon\app.res), so this needs no resource compiler
