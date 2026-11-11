@@ -519,7 +519,7 @@ line_end_at :: proc(d: ^Doc, sp: Vec2) -> (Line_End, bool) {
 }
 
 tool_extend :: proc(d: ^Doc, p, sp: Vec2, pressed, over: bool) {
-	if over do ui.cursor = .CROSSHAIR
+	if over do ui_tool_cursor(TOOL_ICONS[.Extend])
 	if pressed {
 		pen_finish(true)
 		clear(&tl.anchors)

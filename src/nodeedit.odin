@@ -605,7 +605,7 @@ pen_finish :: proc(keep: bool) {
 }
 
 tool_pen :: proc(d: ^Doc, p, sp: Vec2, pressed, over: bool) {
-	if over do ui.cursor = .CROSSHAIR
+	if over do ui_tool_cursor(TOOL_ICONS[.Pen])
 	q := snap_pt(p)
 	if pressed {
 		if len(tl.pen_pts) >= 2 && v_len(to_screen(d, tl.pen_pts[0].p) - sp) < 9 {
@@ -700,7 +700,7 @@ pen_undo_point :: proc(d: ^Doc) {
 // Freehand ------------------------------------------------------------------------------------------------
 
 tool_freehand :: proc(d: ^Doc, p, sp: Vec2, pressed, over: bool) {
-	if over do ui.cursor = .CROSSHAIR
+	if over do ui_tool_cursor(TOOL_ICONS[.Freehand])
 	if pressed {
 		tl.kind = .Freehand
 		tl.start_scr = sp

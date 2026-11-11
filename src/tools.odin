@@ -346,11 +346,11 @@ viewport_update :: proc(vp: Rect) {
 	if panning && over || (panning && ui.active_id == 0 && tl.kind == .None) {
 		d.ox += f32(ui.mx - ui.pmx)
 		d.oy += f32(ui.my - ui.pmy)
-		ui.cursor = .RESIZE_ALL
+		ui_tool_cursor(.Hand, .Icon)
 		return
 	}
 	if hand && over {
-		ui.cursor = .RESIZE_ALL
+		ui_tool_cursor(.Hand, .Icon)
 	}
 	tools_input(d, vp, over, sp)
 }
@@ -420,9 +420,9 @@ tools_input :: proc(d: ^Doc, vp: Rect, over: bool, sp: Vec2) {
 		tool_text(d, p, sp, pressed, over)
 	case .Picker:
 		if pressed do tool_picker(d, p)
-		if over do ui.cursor = .CROSSHAIR
+		if over do ui_tool_cursor(TOOL_ICONS[.Picker])
 	case .Zoom:
-		if over do ui.cursor = .POINTING_HAND
+		if over do ui_tool_cursor(.Zoom, .Icon, {10.5, 10.5}) // the middle of the icon's lens
 		if pressed do zoom_at(d, sp, ui.alt || ui.shift ? 1 / 1.6 : 1.6)
 	case .Hand, .Grid, .Snap, .Onion:
 	}
@@ -596,7 +596,7 @@ marquee_select :: proc(d: ^Doc, a, b: Vec2) {
 // Shape tools ---------------------------------------------------------------------------------------------
 
 tool_shape :: proc(d: ^Doc, tool: Tool, p, sp: Vec2, pressed, over: bool) {
-	if over do ui.cursor = .CROSSHAIR
+	if over do ui_tool_cursor(TOOL_ICONS[tool])
 	if pressed {
 		tl.kind = .Create
 		q := snap_pt(p)
@@ -749,8 +749,12 @@ overlay_draw :: proc(vp: Rect) {
 	}
 	if is_point_tool(tool) do node_overlay(d)
 	if tool == .Pen do pen_overlay(d)
-	if tool == .Eraser && in_rect(vp, ui.mx, ui.my) && !files_dragging() do eraser_cursor(d)
-	if tool == .Sculpt && in_rect(vp, ui.mx, ui.my) && !files_dragging() do sculpt_cursor(d)
+	if (tool == .Eraser || tool == .Sculpt) && ui_hover(vp) && !files_dragging() {
+		// the brush ring is the cursor; no system cursor on top of it
+		ui.hide_cursor = true
+		if tool == .Eraser do eraser_cursor(d)
+		if tool == .Sculpt do sculpt_cursor(d)
+	}
 	if tool == .Extend do extend_overlay(d, vp)
 	if tl.kind == .Freehand || tl.kind == .Extend {
 		for i in 1 ..< len(tl.free_pts) {
