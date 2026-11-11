@@ -51,6 +51,8 @@ native_dialog :: proc(save: bool, title: string, filters: []Filter, def_ext, ini
 	defer gfx_reset_input()
 	when ODIN_OS == .Windows {
 		return native_dialog_windows(save, title, filters, def_ext, initial, dir)
+	} else when ODIN_OS == .Darwin {
+		return native_dialog_mac(save, title, filters, def_ext, initial, dir)
 	} else {
 		p, pok := native_dialog_zenity(save, title, filters, def_ext, initial, dir)
 		if pok && save do p = path_default_ext(p, def_ext)

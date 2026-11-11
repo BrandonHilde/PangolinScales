@@ -19,6 +19,9 @@ if "%sub:~0,1%"=="+" (
 )
 rem Odin compiles one folder as one package, so the shared code is copied in
 call libs\shared\sync.bat
+rem The commit goes into About and --version
+set "commit="
+for /f "delims=" %%c in ('git rev-parse --short HEAD 2^>nul') do set "commit=-define:APP_COMMIT=%%c"
 rem The icon is already compiled (assets\icon\app.res), so this needs no resource compiler
 call :compile PangolinScales.exe -subsystem:windows
 if errorlevel 1 exit /b 1
@@ -33,14 +36,14 @@ exit /b 0
 rem %1 is the output, %2 any extra flags. The first try's output is only shown if it worked: if it failed, the build
 rem without the icon shows a real compile error once, or shows that the icon was the only problem.
 set "log=%TEMP%\pangolin_build_%RANDOM%.log"
-odin build src -out:%1 -o:speed %2 -collection:odinui=libs/odinui -resource:assets/icon/app.res >"%log%" 2>&1
+odin build src -out:%1 -o:speed %2 -collection:odinui=libs/odinui %commit% -resource:assets/icon/app.res >"%log%" 2>&1
 if not errorlevel 1 (
 	type "%log%"
 	del "%log%"
 	exit /b 0
 )
 del "%log%"
-odin build src -out:%1 -o:speed %2 -collection:odinui=libs/odinui
+odin build src -out:%1 -o:speed %2 -collection:odinui=libs/odinui %commit%
 if errorlevel 1 exit /b 1
 echo Note: %1 was built without its icon, because linking assets\icon\app.res failed. Everything else works.
 exit /b 0

@@ -20,9 +20,11 @@ if command -v pkg-config >/dev/null 2>&1 && ! pkg-config --exists sdl3; then
 	echo "(Fedora: SDL3-devel, Debian/Ubuntu: libsdl3-dev, Arch: sdl3)." >&2
 fi
 # On Linux Odin ships stb as C source: build its libraries once, the first time they are missing
+# (macOS gets them ready-built, in vendor/stb/lib/darwin)
 stb="$(odin root)"
 stb="${stb%/}/vendor/stb"
 for lib in stb_image stb_image_write stb_image_resize stb_truetype stb_rect_pack; do
+	[ "$(uname)" = Darwin ] && break
 	if [ ! -f "$stb/lib/$lib.a" ]; then
 		echo "Building Odin's stb libraries in $stb/lib"
 		(cd "$stb/src" && sh build_stb.sh) || {
@@ -32,5 +34,17 @@ for lib in stb_image stb_image_write stb_image_resize stb_truetype stb_rect_pack
 		break
 	fi
 done
-odin build src -out:PangolinScales -o:speed -collection:odinui=libs/odinui
+# The commit goes into About and --version. (Odin links with the runpath $ORIGIN already, so a release folder's
+# bundled libSDL3.so.0, next to the program, is found on systems that have no SDL3 of their own.)
+set -- -out:PangolinScales -o:speed -collection:odinui=libs/odinui
+commit="$(git rev-parse --short HEAD 2>/dev/null || true)"
+if [ -n "$commit" ]; then set -- "$@" "-define:APP_COMMIT=$commit"; fi
+# SDL3 links from the system: on macOS from SDL3_PREFIX (the release workflow's own build) or Homebrew,
+# whose lib folder the linker doesn't search by itself
+if [ -n "$SDL3_PREFIX" ]; then
+	set -- "$@" "-extra-linker-flags:-L$SDL3_PREFIX/lib"
+elif [ "$(uname)" = Darwin ] && command -v brew >/dev/null 2>&1; then
+	set -- "$@" "-extra-linker-flags:-L$(brew --prefix)/lib"
+fi
+odin build src "$@"
 echo "Built PangolinScales"

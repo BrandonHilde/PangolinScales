@@ -229,7 +229,7 @@ dialogs_run :: proc() {
 		c := dialog_frame("About", 300, 150)
 		logo_draw(c.x, c.y + 4, 4)
 		text(c.x + 80, c.y + 6, APP_NAME, WHITE)
-		text(c.x + 80, c.y + 22, fmt.tprintf("Version %s", APP_VERSION), C_TEXT_DIM)
+		text(c.x + 80, c.y + 22, fmt.tprintf("Version %s", app_version_short()), C_TEXT_DIM)
 		text(c.x + 80, c.y + 38, APP_TAGLINE, C_TEXT)
 		text(c.x + 80, c.y + 58, "Part of the Pangolin suite. BSD 3-Clause.", C_TEXT_DIM)
 		if ok, _ := dialog_buttons(c, "Close this window (Enter or Esc).", "OK", ""); ok do dialog_close()

@@ -1,5 +1,6 @@
 package pangolin
 
+APP_VERSION :: "0.9.0-beta" // also in the release workflow's tag (v0.9.0-beta)
 APP_NAME :: "Pangolin Scales"
 APP_TAGLINE :: "Curves, scale by scale."
 

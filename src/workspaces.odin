@@ -129,7 +129,7 @@ workspace_builtin :: proc(i: int) {
 // ---------------------------------------------------------------------------
 
 ws_dir :: proc() -> string {
-	return fmt.tprintf("%sworkspaces/", gfx_app_dir())
+	return fmt.tprintf("%sworkspaces/", gfx_data_dir())
 }
 
 ws_path_for :: proc(name: string) -> string {

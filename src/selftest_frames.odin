@@ -8,7 +8,7 @@ import "core:strings"
 
 @(private = "file")
 tmp_path :: proc(name: string) -> string {
-	return fmt.tprintf("%sselftest_tmp_%s", gfx_app_dir(), name)
+	return fmt.tprintf("%sselftest_tmp_%s", gfx_data_dir(), name)
 }
 
 @(private = "file")

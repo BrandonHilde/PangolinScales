@@ -15,3 +15,6 @@ scales.cfg
 workspaces/
 macros/
 src/shared_*.odin
+
+# release folders (libs/shared/release/package.sh)
+dist/

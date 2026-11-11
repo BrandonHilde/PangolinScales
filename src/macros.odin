@@ -24,7 +24,7 @@ macro_begin :: proc() -> (ok: bool, msg: string) {
 macro_end :: proc(keep: bool) {}
 
 macro_dir :: proc() -> string {
-	return fmt.tprintf("%smacros/", gfx_app_dir())
+	return fmt.tprintf("%smacros/", gfx_data_dir())
 }
 
 macro_info :: proc(what: int) -> f64 {

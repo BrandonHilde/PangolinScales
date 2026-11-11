@@ -6,6 +6,12 @@ import "core:strconv"
 import "core:strings"
 
 main :: proc() {
+	for a in os.args[1:] {
+		if a == "--version" {
+			version_print()
+			return
+		}
+	}
 	shot_path := ""
 	win_w, win_h := 0, 0
 	shot_frame := 8
@@ -126,7 +132,8 @@ main :: proc() {
 		open_path(a)
 		opened = true
 	}
-	if !opened do add_doc(doc_new(.Svg, "Untitled", 1024, 768))
+	// a file that could not be opened (gone, or not one Scales reads) leaves no document: start a new one
+	if !opened || len(docs) == 0 do add_doc(doc_new(.Svg, "Untitled", 1024, 768))
 	if demo do demo_setup()
 
 	frame_no := 0

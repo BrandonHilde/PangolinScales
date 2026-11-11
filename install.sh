@@ -24,7 +24,7 @@ refresh() {
 }
 
 if [ "$1" = "--uninstall" ]; then
-	rm -f "$dest/$APP" "$apps/$APP.desktop"
+	rm -f "$dest/$APP" "$dest/libSDL3.so.0" "$apps/$APP.desktop"
 	for s in $SIZES; do rm -f "$icons/${s}x${s}/apps/$APP.png"; done
 	refresh
 	echo "Uninstalled $NAME. Its settings, workspaces and macros are still in $dest"
@@ -45,6 +45,11 @@ mkdir -p "$dest"
 # copied beside it, then renamed over it: that works even while the installed copy is running
 cp "$APP" "$dest/.$APP.new"
 mv -f "$dest/.$APP.new" "$dest/$APP"
+# a release folder brings its own SDL3, found next to the program: it goes along (a build here uses the system's)
+if [ -f libSDL3.so.0 ]; then
+	cp libSDL3.so.0 "$dest/.libSDL3.so.0.new"
+	mv -f "$dest/.libSDL3.so.0.new" "$dest/libSDL3.so.0"
+fi
 for s in $SIZES; do
 	mkdir -p "$icons/${s}x${s}/apps"
 	cp "assets/icon/icon_$s.png" "$icons/${s}x${s}/apps/$APP.png"

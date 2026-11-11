@@ -5,8 +5,6 @@ import "core:math"
 
 import oui "odinui:odinui"
 
-APP_VERSION :: "0.1"
-
 want_quit: bool
 canvas_mode := false // Tab: hide the side panels, tabs and status bar, leaving only the top bars
 
