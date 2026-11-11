@@ -40,11 +40,17 @@ set -- -out:PangolinScales -o:speed -collection:odinui=libs/odinui
 commit="$(git rev-parse --short HEAD 2>/dev/null || true)"
 if [ -n "$commit" ]; then set -- "$@" "-define:APP_COMMIT=$commit"; fi
 # SDL3 links from the system: on macOS from SDL3_PREFIX (the release workflow's own build) or Homebrew,
-# whose lib folder the linker doesn't search by itself
+# whose lib folder the linker doesn't search by itself. A macOS build also looks for libraries in the app's
+# Contents/Frameworks, where the release puts SDL3 (libs/shared/release/package.sh).
+link=""
 if [ -n "$SDL3_PREFIX" ]; then
-	set -- "$@" "-extra-linker-flags:-L$SDL3_PREFIX/lib"
+	link="-L$SDL3_PREFIX/lib"
 elif [ "$(uname)" = Darwin ] && command -v brew >/dev/null 2>&1; then
-	set -- "$@" "-extra-linker-flags:-L$(brew --prefix)/lib"
+	link="-L$(brew --prefix)/lib"
 fi
+if [ "$(uname)" = Darwin ]; then
+	link="$link -Wl,-rpath,@executable_path/../Frameworks"
+fi
+if [ -n "$link" ]; then set -- "$@" "-extra-linker-flags:$link"; fi
 odin build src "$@"
 echo "Built PangolinScales"
