@@ -182,6 +182,16 @@ select_tool_in_group :: proc(t: Tool, gi: int) {
 	set_tool(t)
 }
 
+// Moves the group at `from` to `to` (dragged by its header); what points at groups follows.
+tool_group_move :: proc(from, to: int) {
+	if from == to || from < 0 || to < 0 || from >= len(tool_groups) || to >= len(tool_groups) do return
+	g := tool_groups[from]
+	ordered_remove(&tool_groups, from)
+	inject_at(&tool_groups, to, g)
+	active_group = group_index_moved(active_group, from, to)
+	group_key_wait = -1
+}
+
 tool_groups_clear :: proc() {
 	active_group = -1
 	group_key_wait = -1

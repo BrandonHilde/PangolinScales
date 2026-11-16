@@ -344,11 +344,12 @@ panel_toolbar :: proc() {
 	cg := current_group()
 	eff := eff_tool()
 	for &g, gi in tool_groups {
-		oui.element(uictx, fmt.tprintf("g%d", gi), "tool-group", {class = g.pen_eraser ? "eraser" : ""})
+		gclass := fmt.tprintf("%s %s", g.pen_eraser ? "eraser" : "", group_drag_class(gi, len(tool_groups)))
+		gnode := oui.element(uictx, fmt.tprintf("g%d", gi), "tool-group", {class = gclass})
 		// header: the name on the left, the hotkey as a keycap on the right
 		// (click the keycap for options; right-click the header for rename / remove)
 		hdr := oui.element(uictx, "head", "group-head")
-		oui_tip(hdr, {group_title(&g), "A tool group: tools, switches and path operations kept together, or colors. Right-click to rename or remove it."})
+		oui_tip(hdr, {group_title(&g), "A tool group: tools, switches and path operations kept together, or colors. Drag here to move the group up or down; right-click to rename or remove it."})
 		oui.label(uictx, "title", group_title(&g), {class = "group-title"})
 		waiting := group_key_wait == gi
 		label := waiting ? "..." : (g.key == .KEY_NULL ? "-" : key_name(g.key))
@@ -357,6 +358,7 @@ panel_toolbar :: proc() {
 		oui.end(uictx)
 		oui_tip(kc, {"Group hotkey", "Press this key to pick the group's last tool, and again to step through its tools, with Change Fill and Change Stroke taking their turn after them. A group with only operations repeats the last one, and a color group steps through its colors. Click to change the key, rename or remove the group."})
 		oui.end(uictx)
+		group_drag_track(gi, gnode, hdr, kc)
 		bid := make_id({}, fmt.tprintf("grpbadge%d", gi))
 		if kc.clicked {
 			popup_begin(bid, oui_rect(kc), 120)
@@ -437,9 +439,7 @@ panel_toolbar :: proc() {
 				popup_grid(4)
 				if !is_colors {
 					popup_column("Tools")
-					for tool in Tool {
-						if !tool_group_has(&g, tool) do popup_item_icon(TOOL_NAMES[tool], int(tool), TOOL_ICONS[tool], TOOL_HELP[tool])
-					}
+					popup_tools_by_kind(proc(t: Tool, g: rawptr) -> bool {return !tool_group_has((^Tool_Group)(g), t)}, &g)
 					if len(g.ops) < len(PATH_OPS) {
 						popup_column("Path operations")
 						for op, i in PATH_OPS {
@@ -467,7 +467,7 @@ panel_toolbar :: proc() {
 				case v == ADD_SWATCHES:
 					group_add_colors(&g, swatches_list())
 				case:
-					append(&g.tools, Tool(v))
+					tool_list_insert(&g.tools, Tool(v))
 					if !tool_is_toggle(Tool(v)) && (len(g.tools) == 1 || tool_is_toggle(g.last) || !tool_group_has(&g, g.last)) do g.last = Tool(v)
 				}
 				ui.popup_result_id = 0
@@ -491,6 +491,8 @@ panel_toolbar :: proc() {
 			ordered_remove(&tool_groups, rem_g)
 			group_key_wait = -1
 		}
+	} else if from, to, moved := group_drag_update(len(tool_groups)); moved {
+		tool_group_move(from, to)
 	}
 	if len(tool_groups) < MAX_TOOL_GROUPS {
 		if obutton("+ New Group", 0, {"", "Add an empty tool group to the toolbar, then use its + button to fill it. You can have up to 12 groups."}, id = "new-group") {

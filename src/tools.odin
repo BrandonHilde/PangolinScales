@@ -29,6 +29,29 @@ Tool :: enum {
 	Onion,
 }
 
+// Which tools belong together: the + menu of a tool group lists them kind by kind, and a tool added to a group goes
+// in beside its relatives (group_order.odin).
+TOOL_KIND := [Tool]int {
+	.Select   = 0,
+	.Node     = 0,
+	.Control  = 0,
+	.Pen      = 1,
+	.Freehand = 1,
+	.Eraser   = 1,
+	.Sculpt   = 1,
+	.Extend   = 1,
+	.Rect     = 2,
+	.Ellipse  = 2,
+	.Line     = 2,
+	.Text     = 2,
+	.Picker   = 3,
+	.Hand     = 4,
+	.Zoom     = 4,
+	.Grid     = 5,
+	.Snap     = 5,
+	.Onion    = 5,
+}
+
 TOOL_NAMES := [Tool]string {
 	.Select   = "Select (V)",
 	.Node     = "Node Edit (A)",

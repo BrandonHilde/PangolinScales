@@ -18,6 +18,7 @@ Dialog_Kind :: enum {
 	Tags,
 	Frame_Props,
 	Workspaces,
+	Palette_Save,
 }
 
 Dialog :: struct {
@@ -64,7 +65,7 @@ dialog_open :: proc(k: Dialog_Kind) {
 		dialog.a, dialog.b = int(doc.w), int(doc.h)
 	case .Add_Glyphs:
 		dialog.a = 0
-	case .None, .Confirm_Close, .Message, .Shortcuts, .About, .Group_Rename, .Font, .UI_Scale, .Tags:
+	case .None, .Confirm_Close, .Message, .Shortcuts, .About, .Group_Rename, .Font, .UI_Scale, .Tags, .Palette_Save:
 	}
 }
 
@@ -235,6 +236,8 @@ dialogs_run :: proc() {
 		if ok, _ := dialog_buttons(c, "Close this window (Enter or Esc).", "OK", ""); ok do dialog_close()
 	case .Group_Rename:
 		dlg_group_rename()
+	case .Palette_Save:
+		dlg_palette_save()
 	case .Font:
 		dlg_font()
 	case .UI_Scale:

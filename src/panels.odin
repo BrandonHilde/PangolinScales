@@ -409,6 +409,31 @@ color_edit :: proc(x, w: i32, y: ^i32, col: ^Color, alpha: bool) -> bool {
 		swatches_list()
 		append(&swatches, Color{col.r, col.g, col.b, 255})
 	}
+	// pasting colors, saving the swatches as a preset, bringing one back
+	SWATCH_MENU :: 0x5a7c4e5 | 1
+	SWATCH_DEFAULT :: 1
+	pr := Rect{x + w - 16 - 4 - 54, y^, 54, 14}
+	if button(pr, "Presets", {"", "Paste colors copied as text (hex codes, rgb(), color names), save the swatches as a preset of your own, or bring back a saved one."}) {
+		popup_begin(SWATCH_MENU, pr, 150)
+		palette_menu_items("swatches")
+		popup_item_palette("Default swatches", SWATCH_DEFAULT, DEFAULT_SWATCHES[:], "The swatches Pangolin Scales starts with.")
+	}
+	if ui.popup_result_id == SWATCH_MENU {
+		v := ui.popup_result_val
+		ui.popup_result_id = 0
+		swatches_list()
+		act, cols := Palette_Act.Replace, DEFAULT_SWATCHES[:]
+		if palette_menu_owns(v) do act, cols = palette_menu_pick(v, swatches[:])
+		switch act {
+		case .None:
+		case .Replace:
+			clear(&swatches)
+			fallthrough
+		case .Add:
+			for c in cols do if len(swatches) < PALETTE_MAX do append(&swatches, Color{c.r, c.g, c.b, 255})
+		}
+	}
+	palette_menu_frame()
 	y^ += 16
 	CELL :: 18
 	cols := max(w / CELL, 1)

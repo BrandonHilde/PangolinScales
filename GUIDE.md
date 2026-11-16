@@ -8,6 +8,8 @@ The left toolbar holds **tool groups**, as in Pangolin Paints. Each group has a 
 default): pressing it picks the tool last used from that group, pressing it again cycles through the group's tools.
 - Click a group's keycap to assign a hotkey (any letter or digit; Esc cancels, Backspace clears), rename or remove the group.
   A hotkey on a letter takes over that letter's single-key tool shortcut. Right-click the header for rename / remove.
+- Drag a group by its header to move it up or down the toolbar. The + menu lists tools kind by kind (selection, drawing,
+  shapes and text, eyedropper, view, switches), and a tool added to a group goes in beside the group's tools of the same kind.
 - The **+** at the end of a group adds any tool, switch or **path operation** (union, subtract, intersect, exclude, combine,
   break apart, reverse, close or open, simplify, offset, object / stroke to path) to it; right-click one to take it out. Operation buttons
   act on the selection at once and are grayed out until enough objects are selected. The default **Path** group (6) holds
@@ -45,7 +47,8 @@ The bar under the canvas ends in a switch: **timeline**, **file browser** or hid
 View > File Browser do the same. It starts hidden, and comes back as you left it.
 
 **File browser**: thumbnails of the SVG drawings, fonts and images in a folder (`.png`, `.jpg`, `.webp`, `.bmp`, `.tga`, `.gif`, `.qoi`).
-Double-click a folder to go into it. Then drag a thumbnail:
+Double-click a folder to go into it. Right-click a file or folder to open it, show it in the system's file manager or copy
+its path; right-click the empty space to open the folder being browsed in the file manager. Then drag a thumbnail:
 | | on the canvas | on the tab bar, or double-click |
 |-|-|-|
 | SVG | adds its objects at that point, selected, as one undo step | opens it |
@@ -84,7 +87,9 @@ are on. The Frame menu and the timeline add, duplicate, delete and move frames.
   node, make nodes smooth or corner, delete nodes, move with the arrow keys. The **control points** tool (Shift+A) picks control points
   only, including ones lying on their anchor: where several overlap, click to step through them, then drag or use the arrow keys.
 - **Style**: fill and stroke as none, solid, linear or radial gradient (stops, spread, draggable gradient handles on the canvas), with
-  an HSV picker, RGB and alpha sliders, a hex field, swatches and recent colors, stroke width, caps, joins, dashes, opacity, even-odd fill, corner radius, exact X / Y / W / H.
+  an HSV picker, RGB and alpha sliders, a hex field, swatches (their **Presets** button pastes web colors copied as text,
+  such as `#264653, rgb(42, 157, 143), teal`, copies them as hex codes, and saves them as a preset of your own in the
+  `palettes` folder) and recent colors, stroke width, caps, joins, dashes, opacity, even-odd fill, corner radius, exact X / Y / W / H.
 - **Objects**: group / ungroup, z-order, lock and hide, duplicate, copy / paste (also as SVG text with other apps), flip, rotate 90,
   align and distribute, an objects panel (drag rows to reorder objects or move them in and out of groups; drop beside the
   list to cancel).
@@ -93,7 +98,8 @@ are on. The Frame menu and the timeline add, duplicate, delete and move frames.
   turn on **Close Open Paths**, which lets freehand strokes close when they end near their start, and lets booleans and offset
   join the ends of open paths with a straight line. While it is off, union merges open paths into one path without closing
   them, and offset or any other boolean involving an open path is refused.
-- **Text** with the bundled fonts and every installed TTF / OTF (the font button opens a searchable list; size is a slider).
+- **Text** with the bundled fonts and every installed TTF / OTF (the font button opens a searchable list, each name written
+  in its own font; size is a slider).
   With the text tool, click a text object to edit it or drag it to move it. Text stays live until converted to outlines.
 - **Grid**, snap to grid, a tracing image under or over the drawing, undo (100 steps).
 - **Navigator** at the bottom of the right panel: the whole page with the visible area marked; click or drag to move the view (View > Navigator).

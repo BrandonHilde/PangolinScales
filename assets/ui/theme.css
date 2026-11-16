@@ -312,6 +312,10 @@ toolbar {
 	overflow: hidden;
 }
 tool-group.eraser .group-title { color: var(--accent); }
+/* dragging a group by its header: the one dragged dims, a line shows where it lands */
+tool-group.drag-from   { opacity: 0.45; }
+tool-group.drop-above  { border-top: 2px solid var(--accent); }
+tool-group.drop-below  { border-bottom: 2px solid var(--accent); }
 tool-group {
 	display: flex;
 	flex-direction: column;

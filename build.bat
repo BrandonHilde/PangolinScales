@@ -21,7 +21,7 @@ rem Odin compiles one folder as one package, so the shared code is copied in
 call libs\shared\sync.bat
 rem The commit goes into About and --version
 set "commit="
-for /f "delims=" %%c in ('git rev-parse --short HEAD 2^>nul') do set "commit=-define:APP_COMMIT=%%c"
+for /f "delims=" %%c in ('git rev-parse --short HEAD 2^>nul') do set "commit=-define:APP_COMMIT=g%%c"
 rem The icon is already compiled (assets\icon\app.res), so this needs no resource compiler
 call :compile PangolinScales.exe -subsystem:windows
 if errorlevel 1 exit /b 1

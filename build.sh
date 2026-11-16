@@ -38,7 +38,7 @@ done
 # bundled libSDL3.so.0, next to the program, is found on systems that have no SDL3 of their own.)
 set -- -out:PangolinScales -o:speed -collection:odinui=libs/odinui
 commit="$(git rev-parse --short HEAD 2>/dev/null || true)"
-if [ -n "$commit" ]; then set -- "$@" "-define:APP_COMMIT=$commit"; fi
+if [ -n "$commit" ]; then set -- "$@" "-define:APP_COMMIT=g$commit"; fi
 # SDL3 links from the system: on macOS from SDL3_PREFIX (the release workflow's own build) or Homebrew,
 # whose lib folder the linker doesn't search by itself. A macOS build also looks for libraries in the app's
 # Contents/Frameworks, where the release puts SDL3 (libs/shared/release/package.sh).

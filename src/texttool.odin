@@ -255,7 +255,7 @@ font_pick_open :: proc() {
 	fonts_scan()
 	dialog_open(.Font)
 	// open on the current font
-	ROW :: 16
+	ROW :: 22
 	for f, i in ufonts {
 		if f.name == cur_font_name() do font_scroll = max(i32(i) * ROW - 100, 0)
 	}
@@ -269,8 +269,8 @@ dlg_font :: proc() {
 	text_field({c.x + 50, c.y, c.w - 50, 14}, &font_filter, {"Search fonts", "Type part of a font's name to narrow the list."})
 	list := Rect{c.x, c.y + 22, c.w, c.h - 22 - 24}
 	ctl_well(list)
-	tip_area(list, "font-list", {"Fonts", "The bundled fonts and every font installed on this computer. Click one to use it."})
-	ROW :: 16
+	tip_area(list, "font-list", {"Fonts", "The bundled fonts and every font installed on this computer, each name written in its own font. Click one to use it."})
+	ROW :: 22
 	flt := strings.to_lower(name_str(&font_filter), context.temp_allocator)
 	idx := make([dynamic]int, context.temp_allocator)
 	for f, i in ufonts {
@@ -288,13 +288,13 @@ dlg_font :: proc() {
 		if ry + ROW < inner.y || ry > inner.y + inner.h do continue
 		rr := Rect{inner.x, ry, inner.w, ROW}
 		hover := ui_hover(rr) && ui_hover(list)
-		if hover do tip_area(rr, "font-row", {"", "Click to use this font."})
+		if hover do tip_area(rr, "font-row", {f.name, "Click to use this font."})
 		if f.name == cur {
 			fill_rect(rr, C_ACCENT_TINT)
 		} else if hover {
 			fill_rect(rr, Color{255, 255, 255, 14})
 		}
-		text(rr.x + 8, rr.y + (ROW - FONT_CAP) / 2, f.name, f.name == cur ? C_ACCENT : C_TEXT)
+		font_name_draw(Rect{rr.x + 8, rr.y, rr.w - 16, rr.h}, f.name, f.name, f.path, f.data, f.ok ? &f.info : nil, 15, f.name == cur ? C_ACCENT : C_TEXT)
 		if hover && ui.pressed[0] do chosen = k
 	}
 	clip_end()
